@@ -1,0 +1,12 @@
+pandas
+pyyaml
+tabulate
+fuzzywuzzy
+python-Levenshtein
+openpyxl
+sqlalchemy
+plotly
+streamlit
+seaborn
+matplotlib
+fastapi

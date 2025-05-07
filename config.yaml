@@ -1,0 +1,114 @@
+categories:
+  Payment:
+    - autopay
+    - epay
+    - online payment
+    - automatic payment - thank
+    - payment thank you
+    - interest payment
+  Pay:
+    - united ag
+    - hydroplane
+    - salary
+    - payroll
+    - direct deposit
+    - dd 
+    - payment from
+  Rent: 
+    - clickpay
+    - rent
+  Car:
+    - dmv
+    - jiffy lube
+    - autozone
+  Insurance:
+    - geico
+  Acorns:
+    - acorns
+    - acorn
+    - invest acorns
+    - acorns investment
+  Wealthfront:
+    - wealthfront
+    - wlth frnt
+    - wlthfrnt
+  Robinhood:
+    - robinhood
+    - rbhood
+    - rob hood
+    - rbnhd
+  Schwab:
+    - schwab
+    - schw
+    - charles schwab
+    - chas schwab
+    - td ameritrade
+  Utilities: []
+  Gas:
+    - shell
+    - exxon
+    - chevron
+    - gas
+    - arco
+    - speedway
+    - pepboys
+  Recreation: 
+    - city of
+  Food: []
+  Groceries:
+    - costco
+  Travel: 
+    - foreign transaction fee
+    - lyft
+    - rent
+  Shopping:
+    - atm
+  Venmo:
+    - venmo
+  Subscriptions:
+    - netflix
+    - hulu
+    - spotify
+    - apple
+    - paramount
+    - ouraring
+    - annual
+    - membership
+  Amazon:
+    - amazon
+    - amzn
+  Misc: []
+
+category_mapping:
+  Entertainment: Shopping
+  Dining: Food
+  Restaurants: Food
+  Transportation: Travel
+  Home: Shopping
+  Health & Wellness: Shopping
+  Fees & Charges: Misc
+  Gifts & Donations: Misc
+  Personal: Shopping
+  Professional Services: Shopping
+  Food & Drink: Food
+
+# Budget values (monthly)
+budgets:
+  # Regular expense categories
+  Rent: 2405
+  Utilities: 75
+  Car: 0
+  Insurance: 20
+  Gas: 0
+  Recreation: 100
+  Food: 600
+  Groceries: 200
+  Travel: 300
+  Shopping: 400
+  Venmo: 250
+  Subscriptions: 55
+  Amazon: 75
+  Misc: 0
+  
+  # Investment budget (combined)
+  Investments: 1000
