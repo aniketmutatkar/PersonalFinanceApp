@@ -8,10 +8,10 @@ from decimal import Decimal
 from typing import Dict, Set, Optional, Tuple, List
 from datetime import date
 
-from models.models import Transaction, Category
-from repositories.transaction_repository import TransactionRepository
-from repositories.monthly_summary_repository import MonthlySummaryRepository
-from config.config_manager import ConfigManager
+from src.models.models import Transaction, Category, MonthlySummary
+from src.repositories.transaction_repository import TransactionRepository
+from src.repositories.monthly_summary_repository import MonthlySummaryRepository
+from src.config.config_manager import ConfigManager
 
 
 class ImportService:
@@ -268,9 +268,7 @@ class ImportService:
             
         Returns:
             True if imported, False otherwise
-        """
-        from models.models import MonthlySummary
-        
+        """        
         print("Checking for historical data...")
         
         # Check if we already have data in monthly_summary

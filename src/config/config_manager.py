@@ -7,7 +7,7 @@ import yaml
 from decimal import Decimal
 from typing import Dict, Any, List, Optional
 
-from models.category import Category
+from src.models.models import Category
 
 
 class ConfigManager:

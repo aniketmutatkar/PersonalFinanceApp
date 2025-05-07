@@ -8,10 +8,10 @@ import pandas as pd
 from tabulate import tabulate
 from datetime import date
 
-from models.models import MonthlySummary, Transaction
-from repositories.transaction_repository import TransactionRepository
-from repositories.monthly_summary_repository import MonthlySummaryRepository
-from utils.utilities import format_currency
+from src.models.models import MonthlySummary, Transaction
+from src.repositories.transaction_repository import TransactionRepository
+from src.repositories.monthly_summary_repository import MonthlySummaryRepository
+from src.utils.utilities import format_currency
 
 
 class ReportingService:

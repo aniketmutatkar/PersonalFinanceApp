@@ -5,13 +5,13 @@ Main application entry point for the Finance Tracker.
 import os
 from typing import Dict
 
-from .database import init_database
-from .repositories.transaction_repository import TransactionRepository
-from .repositories.monthly_summary_repository import MonthlySummaryRepository
-from .services.import_service import ImportService
-from .services.reporting_service import ReportingService
-from .config.config_manager import ConfigManager
-from .utils.utilities import setup_logging
+from database import init_database
+from src.repositories.transaction_repository import TransactionRepository
+from src.repositories.monthly_summary_repository import MonthlySummaryRepository
+from src.services.import_service import ImportService
+from src.services.reporting_service import ReportingService
+from src.config.config_manager import ConfigManager
+from src.utils.utilities import setup_logging
 
 
 class FinanceTracker:
