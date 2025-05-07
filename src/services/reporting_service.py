@@ -172,18 +172,38 @@ class ReportingService:
         Returns:
             DataFrame with transaction data
         """
+        # Add debug logging
+        print(f"Reporting service get_transactions_report called with: category={category}, start_date={start_date}, end_date={end_date}, month_str={month_str}")
+        
         # Get transactions based on filters
         transactions = []
         
         if month_str:
             # If month is provided, use that
+            print(f"Finding transactions by month: {month_str}")
             transactions = self.transaction_repository.find_by_month(month_str)
         elif start_date and end_date:
             # If date range is provided, use that
+            print(f"Finding transactions by date range: {start_date} to {end_date}")
             transactions = self.transaction_repository.find_by_date_range(start_date, end_date)
         elif category:
             # If only category is provided, use that
+            print(f"Finding transactions by category: {category}")
             transactions = self.transaction_repository.find_by_category(category)
+        else:
+            # No filters, get all transactions
+            print("No filters, trying to get all transactions")
+            try:
+                # Implement a method to get all transactions if needed
+                print("Using find_all_transactions method")
+                transactions = self.transaction_repository.find_all_transactions()
+            except AttributeError:
+                print("find_all_transactions method not found, trying alternative approach")
+                # Use a different approach if the method doesn't exist
+                # For example, use most recent month or year
+                transactions = []
+        
+        print(f"Found {len(transactions)} transactions")
         
         if not transactions:
             print("No transactions found matching the criteria.")

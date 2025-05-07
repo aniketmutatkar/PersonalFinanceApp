@@ -106,27 +106,29 @@ class ImportService:
         # Return the base amount for regular transactions
         return Decimal(str(base_amount))
     
-    def process_bank_file(self, file_path: str) -> pd.DataFrame:
+    def process_bank_file(self, file_path: str, original_filename: str = None) -> pd.DataFrame:
         """
         Process a bank transaction file based on its name.
         
         Args:
             file_path: Path to the bank file
+            original_filename: Original filename before server processing (optional)
             
         Returns:
             DataFrame with processed transactions
         """
-        filename = os.path.basename(file_path).lower()
+        # Use original filename if provided, otherwise use the path basename
+        filename_to_check = original_filename.lower() if original_filename else os.path.basename(file_path).lower()
         df = None
         
         # Determine bank type from filename
-        if 'chase' in filename:
+        if 'chase' in filename_to_check:
             source = 'chase'
             df = pd.read_csv(file_path)
             df = df.drop(['Post Date', 'Memo'], axis=1) if all(col in df.columns for col in ['Post Date', 'Memo']) else df
             df = df.rename(columns={'Transaction Date': 'Date'}) if 'Transaction Date' in df.columns else df
         
-        elif 'citi' in filename:
+        elif 'citi' in filename_to_check:
             source = 'citi'
             df = pd.read_csv(file_path)
             # Process Citi specific format
@@ -136,7 +138,7 @@ class ImportService:
                 df.loc[df['Credit'].notnull(), 'Type'] = 'Credit'
                 df = df.drop(['Debit', 'Credit', 'Status', 'Member Name'], axis=1) if all(col in df.columns for col in ['Status', 'Member Name']) else df
         
-        elif 'wells' in filename or 'fargo' in filename:
+        elif 'wells' in filename_to_check or 'fargo' in filename_to_check:
             source = 'wells'
             df = pd.read_csv(file_path)
             # Handle Wells Fargo format
@@ -147,7 +149,7 @@ class ImportService:
                     df = df.drop(['A', 'B'], axis=1)
         
         if df is None:
-            raise ValueError(f"Could not determine bank type for file: {filename}")
+            raise ValueError(f"Could not determine bank type for file: {filename_to_check}")
         
         # Add source information
         df['source'] = source

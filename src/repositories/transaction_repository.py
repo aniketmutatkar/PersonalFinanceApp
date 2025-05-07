@@ -266,3 +266,44 @@ class TransactionRepository:
             return [row[0] for row in result]
         finally:
             session.close()
+
+    def find_all_transactions(self, limit: int = 1000) -> List[Transaction]:
+        """
+        Find all transactions, with optional limit.
+        
+        Args:
+            limit: Maximum number of transactions to return
+            
+        Returns:
+            List of transactions
+        """
+        session = get_db_session()
+        
+        try:
+            # Query for all transactions, limited and ordered by date
+            query = text("""
+            SELECT * FROM transactions
+            ORDER BY date(date) DESC
+            LIMIT :limit
+            """)
+            
+            result = session.execute(query, {"limit": limit}).fetchall()
+            
+            # Convert to domain entities
+            transactions = []
+            for row in result:
+                transaction = Transaction(
+                    id=row.id,
+                    date=row.date,
+                    description=row.description,
+                    amount=Decimal(str(row.amount)),
+                    category=row.category,
+                    source=row.source,
+                    transaction_hash=row.transaction_hash,
+                    month_str=row.month
+                )
+                transactions.append(transaction)
+            
+            return transactions
+        finally:
+            session.close()
