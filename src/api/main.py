@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 
 from src.api.utils.error_handling import APIError, api_error_handler
+from src.api.routers import exports
 
 # Get environment
 env = os.getenv("ENVIRONMENT", "development")
@@ -90,6 +91,7 @@ app.include_router(transactions.router, prefix="/api/transactions", tags=["trans
 app.include_router(monthly_summary.router, prefix="/api/monthly-summary", tags=["monthly-summary"])
 app.include_router(categories.router, prefix="/api/categories", tags=["categories"])
 app.include_router(budgets.router, prefix="/api/budgets", tags=["budgets"])
+app.include_router(exports.router, prefix="/api/exports", tags=["exports"])
 
 # Startup event
 @app.on_event("startup")

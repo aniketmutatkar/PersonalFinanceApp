@@ -76,3 +76,24 @@ class FileUploadResponse(BaseModel):
                 "categories": ["Groceries", "Dining", "Travel"]
             }
         }
+
+class BulkFileUploadResponse(BaseModel):
+    """Response for bulk file upload"""
+    files_processed: int
+    total_transactions: int
+    transactions_by_file: Dict[str, int]
+    message: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "files_processed": 3,
+                "total_transactions": 150,
+                "transactions_by_file": {
+                    "chase_june.csv": 50,
+                    "wells_june.csv": 60,
+                    "citi_june.csv": 40
+                },
+                "message": "Files processed successfully"
+            }
+        }

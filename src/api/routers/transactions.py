@@ -3,22 +3,41 @@
 import os
 import tempfile
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
-from typing import List, Optional
-from datetime import date
+from typing import List, Optional, Dict
+from datetime import date, datetime, timedelta
 import pandas as pd
+import uuid
 
-from src.api.dependencies import get_transaction_repository, get_import_service, get_reporting_service
-from src.api.schemas.transaction import TransactionResponse, TransactionCreate, FileUploadResponse
+from src.api.dependencies import (
+    get_transaction_repository, 
+    get_import_service, 
+    get_reporting_service,
+    get_monthly_summary_repository  # Add this
+)
+from src.api.schemas.transaction import (
+    TransactionResponse, 
+    TransactionCreate, 
+    FileUploadResponse,
+    BulkFileUploadResponse  # Add this
+)
+from src.api.schemas.upload import (
+    TransactionPreview, 
+    FilePreviewResponse, 
+    CategoryUpdate, 
+    UploadConfirmation
+)
 from src.api.utils.pagination import PaginationParams, PagedResponse
 from src.api.utils.error_handling import APIError
 from src.api.utils.response import ApiResponse
 from src.services.import_service import ImportService
 from src.services.reporting_service import ReportingService
-from src.repositories.transaction_repository import TransactionRepository  # Add this import
+from src.repositories.transaction_repository import TransactionRepository
+from src.repositories.monthly_summary_repository import MonthlySummaryRepository
 from src.models.models import Transaction
 from decimal import Decimal
 
 router = APIRouter()
+upload_sessions: Dict[str, dict] = {}
 
 @router.get("/", response_model=PagedResponse[TransactionResponse])
 async def get_transactions(
@@ -119,13 +138,173 @@ async def get_transaction(
     except Exception as e:
         raise APIError(status_code=500, detail=str(e))
 
+@router.post("/upload/preview", response_model=ApiResponse[FilePreviewResponse])
+async def preview_upload(
+    files: List[UploadFile] = File(...),
+    import_service: ImportService = Depends(get_import_service)
+):
+    """
+    Preview uploaded files and identify transactions needing review
+    """
+    session_id = str(uuid.uuid4())
+    all_transactions = []
+    all_misc_transactions = []
+    files_info = {}
+    
+    for file in files:
+        # Create a temporary file to store the upload
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+        
+        try:
+            # Process the file
+            df = import_service.process_bank_file(temp_file_path, original_filename=file.filename)
+            
+            if df is not None and not df.empty:
+                # Add temporary IDs to each transaction
+                transactions = []
+                for _, row in df.iterrows():
+                    tx_dict = row.to_dict()
+                    tx_dict['temp_id'] = str(uuid.uuid4())
+                    tx_dict['original_filename'] = file.filename
+                    transactions.append(tx_dict)
+                
+                all_transactions.extend(transactions)
+                files_info[file.filename] = len(transactions)
+                
+                # Extract Misc transactions for review
+                for tx in transactions:
+                    if tx['Category'] == 'Misc':
+                        # Create preview object
+                        preview = TransactionPreview(
+                            temp_id=tx['temp_id'],
+                            date=tx['Date'],
+                            description=tx['Description'],
+                            amount=float(tx['Amount']),
+                            category=tx['Category'],
+                            source=tx['source'],
+                            suggested_categories=_suggest_categories(tx['Description'], import_service)
+                        )
+                        all_misc_transactions.append(preview)
+        finally:
+            os.unlink(temp_file_path)
+    
+    # Store session data
+    upload_sessions[session_id] = {
+        'transactions': all_transactions,
+        'timestamp': datetime.now(),
+        'files_info': files_info
+    }
+    
+    # Clean up old sessions (older than 1 hour)
+    _cleanup_old_sessions()
+    
+    return ApiResponse.success(
+        data=FilePreviewResponse(
+            session_id=session_id,
+            total_transactions=len(all_transactions),
+            misc_transactions=all_misc_transactions,
+            requires_review=len(all_misc_transactions) > 0,
+            files_processed=len(files)
+        )
+    )
+
+@router.post("/upload/confirm", response_model=ApiResponse[BulkFileUploadResponse])
+async def confirm_upload(
+    confirmation: UploadConfirmation,
+    import_service: ImportService = Depends(get_import_service),
+    transaction_repo: TransactionRepository = Depends(get_transaction_repository),
+    monthly_summary_repo: MonthlySummaryRepository = Depends(get_monthly_summary_repository)
+):
+    """
+    Confirm and save uploaded transactions with reviewed categories
+    """
+    # Get session data
+    session_data = upload_sessions.get(confirmation.session_id)
+    if not session_data:
+        raise APIError(
+            status_code=404,
+            detail="Upload session not found or expired",
+            error_code="SESSION_NOT_FOUND"
+        )
+    
+    # Apply category updates
+    category_map = {cu.temp_id: cu.new_category for cu in confirmation.category_updates}
+    
+    transactions_to_save = []
+    for tx_data in session_data['transactions']:
+        # Update category if it was reviewed
+        if tx_data['temp_id'] in category_map:
+            tx_data['Category'] = category_map[tx_data['temp_id']]
+        
+        # Create Transaction object
+        transaction = Transaction(
+            date=pd.to_datetime(tx_data['Date']).date(),
+            description=str(tx_data['Description']),
+            amount=Decimal(str(tx_data['Amount'])),
+            category=str(tx_data['Category']),
+            source=str(tx_data['source']),
+            transaction_hash=str(tx_data['transaction_hash']),
+            month_str=str(tx_data['month_str'])
+        )
+        transactions_to_save.append(transaction)
+    
+    # Save all transactions
+    records_added, affected_data = transaction_repo.save_many(transactions_to_save)
+    
+    # Update monthly summaries
+    if affected_data:
+        monthly_summary_repo.update_from_transactions(affected_data, import_service.categories)
+    
+    # Clean up session
+    del upload_sessions[confirmation.session_id]
+    
+    return ApiResponse.success(
+        data=BulkFileUploadResponse(
+            files_processed=len(session_data['files_info']),
+            total_transactions=records_added,
+            transactions_by_file=session_data['files_info'],
+            message=f"Successfully saved {records_added} new transactions"
+        )
+    )
+
+# Helper functions
+def _suggest_categories(description: str, import_service: ImportService) -> List[str]:
+    """Suggest possible categories based on description"""
+    suggestions = []
+    description_lower = description.lower()
+    
+    # Check each category's keywords
+    for name, category in import_service.categories.items():
+        if category.keywords:
+            for keyword in category.keywords:
+                if keyword.lower() in description_lower:
+                    suggestions.append(name)
+                    break
+    
+    # Return top 3 suggestions
+    return suggestions[:3]
+
+def _cleanup_old_sessions():
+    """Remove sessions older than 1 hour"""
+    current_time = datetime.now()
+    expired = [
+        sid for sid, data in upload_sessions.items()
+        if (current_time - data['timestamp']) > timedelta(hours=1)
+    ]
+    for sid in expired:
+        del upload_sessions[sid]
+
+# Keep the existing single file upload for backwards compatibility
 @router.post("/upload", response_model=ApiResponse[FileUploadResponse])
 async def upload_file(
     file: UploadFile = File(...),
     import_service: ImportService = Depends(get_import_service)
 ):
     """
-    Upload and process a transaction file
+    Upload and process a single transaction file (legacy endpoint)
     """
     try:
         # Create a temporary file to store the upload
