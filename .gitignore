@@ -30,3 +30,14 @@ config.ini
 
 # Ignore PDFs
 **/*.pdf
+
+# React Frontend
+finance-frontend/node_modules/
+finance-frontend/build/
+finance-frontend/.env.local
+finance-frontend/.env.development.local
+finance-frontend/.env.test.local
+finance-frontend/.env.production.local
+finance-frontend/npm-debug.log*
+finance-frontend/yarn-debug.log*
+finance-frontend/yarn-error.log*
