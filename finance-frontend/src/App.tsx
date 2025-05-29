@@ -1,25 +1,35 @@
 import React from 'react';
-import logo from './logo.svg';
-import './App.css';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Layout } from './components/Layout';
+import { Dashboard } from './pages/Dashboard';
+import { Transactions } from './pages/Transactions';
+import { Monthly } from './pages/Monthly';
+import { Budget } from './pages/Budget';
+import { Upload } from './pages/Upload';
+import { Export } from './pages/Export';
+import { ROUTES } from './utils/constants';
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <Router>
+      <Layout>
+        <Routes>
+          {/* Default redirect to dashboard */}
+          <Route path="/" element={<Navigate to={ROUTES.DASHBOARD} replace />} />
+          
+          {/* Main application routes */}
+          <Route path={ROUTES.DASHBOARD} element={<Dashboard />} />
+          <Route path={ROUTES.TRANSACTIONS} element={<Transactions />} />
+          <Route path={ROUTES.MONTHLY} element={<Monthly />} />
+          <Route path={ROUTES.BUDGET} element={<Budget />} />
+          <Route path={ROUTES.UPLOAD} element={<Upload />} />
+          <Route path={ROUTES.EXPORT} element={<Export />} />
+          
+          {/* Catch-all redirect */}
+          <Route path="*" element={<Navigate to={ROUTES.DASHBOARD} replace />} />
+        </Routes>
+      </Layout>
+    </Router>
   );
 }
 
