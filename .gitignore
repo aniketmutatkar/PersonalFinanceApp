@@ -1,0 +1,31 @@
+# Ignore system files
+.DS_Store
+Thumbs.db
+__pycache__/
+*.py[cod]
+
+# Ignore IDE and editor files
+.vscode/
+
+# Ignore logs and databases
+**/*.log
+**/*.sql
+**/*.sqlite
+**/*.db
+finances.db
+
+# Ignore environment and configuration files
+.env
+config.ini
+
+# Ignore CSV files
+**/*.csv
+
+# Ignore Excel files
+**/*.xlsx
+**/*.xls
+**/*.xlsm
+**/*.xlsb
+
+# Ignore PDFs
+**/*.pdf
