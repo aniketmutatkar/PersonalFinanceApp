@@ -5,6 +5,16 @@ module.exports = {
     ],
     theme: {
       extend: {
+          fontSize: {
+            'xs': '1.368rem',
+            'sm': '1.563rem',
+            'base': '1.758rem',
+            'lg': '1.953rem',
+            'xl': '2.148rem',
+            '2xl': '2.539rem',
+            '3xl': '3.125rem',
+            '4xl': '3.906rem',
+          },
         colors: {
           // Custom dark theme colors for finance app
           dark: {

@@ -198,15 +198,15 @@ class MonthlySummaryRepository:
         Returns:
             MonthlySummary domain entity
         """
-        # Extract basic attributes
+        # Extract basic attributes with CORRECT indices
         monthly_summary = MonthlySummary(
             id=row[0],  # id
             month=row[1],  # month
             year=row[2],  # year
             month_year=row[3],  # month_year
-            investment_total=Decimal(str(row[4])),  # investment_total
-            total=Decimal(str(row[5])),  # total
-            total_minus_invest=Decimal(str(row[6]))  # total_minus_invest
+            investment_total=Decimal(str(row[24])) if row[24] is not None else Decimal('0'),  # investment_total
+            total=Decimal(str(row[25])) if row[25] is not None else Decimal('0'),  # total
+            total_minus_invest=Decimal(str(row[26])) if row[26] is not None else Decimal('0')  # total_minus_invest
         )
         
         # We need a different approach to get column names
@@ -217,7 +217,7 @@ class MonthlySummaryRepository:
             columns_info = session.execute(query).fetchall()
             column_names = [col[1] for col in columns_info]
             
-            # Extract category totals
+            # Extract category totals (indices 4-23 are the category columns)
             category_totals = {}
             for i, col_name in enumerate(column_names):
                 # Skip non-category columns

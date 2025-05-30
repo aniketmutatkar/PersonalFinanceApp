@@ -70,7 +70,7 @@ export const useTransactions = (filters?: TransactionFilters) => {
 };
 
 export const useMonthlySummaries = (year?: number) => {
-  const endpoint = year ? `/monthly-summary?year=${year}` : '/monthly-summary';
+  const endpoint = year ? `/monthly-summary?year=${year}` : '/monthly-summary/';
   return useApi<MonthlySummaryListResponse>(endpoint);
 };
 

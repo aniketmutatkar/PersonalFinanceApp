@@ -13,6 +13,37 @@ from src.repositories.transaction_repository import TransactionRepository
 from src.repositories.monthly_summary_repository import MonthlySummaryRepository
 from src.utils.utilities import format_currency
 
+def parse_date_safely(date_str):
+    """Safely parse dates in various formats"""
+    if pd.isna(date_str) or date_str is None:
+        return None
+    
+    if not isinstance(date_str, str):
+        try:
+            return pd.to_datetime(date_str).date()
+        except:
+            return None
+    
+    # Try different date formats
+    date_formats = [
+        "%Y-%m-%d",      # 2025-02-03
+        "%m/%d/%Y",      # 02/03/2025
+        "%m-%d-%Y",      # 02-03-2025
+        "%Y/%m/%d",      # 2025/02/03
+        "%d/%m/%Y",      # 03/02/2025 (day first)
+    ]
+    
+    for fmt in date_formats:
+        try:
+            return pd.to_datetime(date_str, format=fmt).date()
+        except (ValueError, TypeError):
+            continue
+    
+    # Last resort - let pandas infer
+    try:
+        return pd.to_datetime(date_str, format='mixed').date()
+    except:
+        return None
 
 class ReportingService:
     """Service for generating financial reports"""
@@ -228,7 +259,12 @@ class ReportingService:
         
         # Format the date column
         if 'date' in transactions_df.columns:
-            transactions_df['date'] = pd.to_datetime(transactions_df['date']).dt.strftime('%Y-%m-%d')
+            # Apply safe date parsing to each date
+            transactions_df['date'] = transactions_df['date'].apply(
+                lambda x: parse_date_safely(x).strftime('%Y-%m-%d') if parse_date_safely(x) else None
+            )
+            # Remove rows with invalid dates
+            transactions_df = transactions_df.dropna(subset=['date'])
         
         # Format the amount column to 2 decimal places
         if 'amount' in transactions_df.columns:
