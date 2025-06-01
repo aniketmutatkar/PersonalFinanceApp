@@ -8,9 +8,9 @@ import {
   MonthlySummaryListResponse,
   Category,
   CategoryListResponse,
-  BudgetAnalysis,
   ApiResponse,
   PagedResponse
+  // Note: FinancialStatistics, YearComparisonData, SpendingPatterns removed - will be recreated after proper types
 } from '../types';
 
 // Generic API hook for making requests
@@ -52,7 +52,8 @@ export const useApi = <T>(endpoint: string, options?: RequestInit) => {
   return { data, loading, error, refetch: fetchData };
 };
 
-// Specific hooks for different API endpoints
+// ==================== Working Hooks (Keep As-Is) ====================
+
 export const useTransactions = (filters?: TransactionFilters) => {
   const queryParams = new URLSearchParams();
   
@@ -70,7 +71,7 @@ export const useTransactions = (filters?: TransactionFilters) => {
 };
 
 export const useMonthlySummaries = (year?: number) => {
-  const endpoint = year ? `/monthly-summary?year=${year}` : '/monthly-summary/';
+  const endpoint = year ? `/monthly-summary?year=${year}` : '/monthly-summary';
   return useApi<MonthlySummaryListResponse>(endpoint);
 };
 
@@ -82,10 +83,17 @@ export const useCategories = () => {
   return useApi<CategoryListResponse>('/categories');
 };
 
-export const useBudgetAnalysis = (monthYear: string) => {
-  return useApi<BudgetAnalysis>(`/budgets/analysis/${monthYear}`);
-};
+// ==================== Statistics Hooks (To Be Rebuilt) ====================
+// These will be recreated after proper types are established in Phase 1A.1
 
-export const useBudgets = () => {
-  return useApi<Record<string, number>>('/budgets');
-};
+// export const useFinancialStatistics = () => {
+//   return useApi('/statistics/overview');
+// };
+
+// export const useYearComparison = () => {
+//   return useApi('/statistics/year-comparison');
+// };
+
+// export const useSpendingPatterns = () => {
+//   return useApi('/statistics/patterns');
+// };

@@ -9,7 +9,7 @@ import {
   Download,
   DollarSign
 } from 'lucide-react';
-import { ROUTES } from '../utils/constants';
+import { ROUTES } from '../../utils/constants';
 
 interface NavigationItem {
   name: string;

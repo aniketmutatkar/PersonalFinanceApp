@@ -25,6 +25,7 @@ app = FastAPI(
     * **Monthly Summaries**: Get aggregated financial data by month
     * **Categories**: Manage transaction categories and view category-specific data
     * **Budgets**: Compare budget vs. actual spending
+    * **Statistics**: Get financial insights and patterns
     
     ## Authentication
     
@@ -84,7 +85,7 @@ async def health_check():
     return {"status": "healthy"}
 
 # Import routers
-from src.api.routers import transactions, monthly_summary, categories, budgets
+from src.api.routers import transactions, monthly_summary, categories, budgets, statistics
 
 # Include routers
 app.include_router(transactions.router, prefix="/api/transactions", tags=["transactions"])
@@ -92,6 +93,7 @@ app.include_router(monthly_summary.router, prefix="/api/monthly-summary", tags=[
 app.include_router(categories.router, prefix="/api/categories", tags=["categories"])
 app.include_router(budgets.router, prefix="/api/budgets", tags=["budgets"])
 app.include_router(exports.router, prefix="/api/exports", tags=["exports"])
+app.include_router(statistics.router, prefix="/api/statistics", tags=["statistics"])
 
 # Startup event
 @app.on_event("startup")

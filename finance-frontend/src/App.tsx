@@ -1,7 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Layout } from './components/Layout';
-import { Dashboard } from './pages/Dashboard';
+import { Layout } from './components/layout/Layout';
 import { Transactions } from './pages/Transactions';
 import { Monthly } from './pages/Monthly';
 import { Budget } from './pages/Budget';
@@ -18,7 +17,6 @@ function App() {
           <Route path="/" element={<Navigate to={ROUTES.DASHBOARD} replace />} />
           
           {/* Main application routes */}
-          <Route path={ROUTES.DASHBOARD} element={<Dashboard />} />
           <Route path={ROUTES.TRANSACTIONS} element={<Transactions />} />
           <Route path={ROUTES.MONTHLY} element={<Monthly />} />
           <Route path={ROUTES.BUDGET} element={<Budget />} />
