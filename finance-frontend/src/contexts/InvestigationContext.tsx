@@ -47,7 +47,7 @@ const initialState: InvestigationState = {
   isInvestigating: false,
   investigationPanel: {
     isOpen: false,
-    width: 400,
+    width: 1000,
     position: 'right'
   },
   history: [],
