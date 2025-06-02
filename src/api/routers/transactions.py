@@ -39,7 +39,7 @@ from decimal import Decimal
 router = APIRouter()
 upload_sessions: Dict[str, dict] = {}
 
-@router.get("/", response_model=PagedResponse[TransactionResponse])
+@router.get("", response_model=PagedResponse[TransactionResponse])
 async def get_transactions(
     category: Optional[str] = None,
     start_date: Optional[date] = None,

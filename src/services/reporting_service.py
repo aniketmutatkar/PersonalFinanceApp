@@ -206,7 +206,7 @@ class ReportingService:
         # Add debug logging
         print(f"Reporting service get_transactions_report called with: category={category}, start_date={start_date}, end_date={end_date}, month_str={month_str}")
         
-        # Get transactions based on filters
+        # Get transactions based on filters - prioritize specific filters
         transactions = []
         
         if month_str:
@@ -223,55 +223,57 @@ class ReportingService:
             transactions = self.transaction_repository.find_by_category(category)
         else:
             # No filters, get all transactions
-            print("No filters, trying to get all transactions")
-            try:
-                # Implement a method to get all transactions if needed
-                print("Using find_all_transactions method")
-                transactions = self.transaction_repository.find_all_transactions()
-            except AttributeError:
-                print("find_all_transactions method not found, trying alternative approach")
-                # Use a different approach if the method doesn't exist
-                # For example, use most recent month or year
-                transactions = []
+            print("No filters, getting all transactions")
+            transactions = self.transaction_repository.find_all_transactions()
         
-        print(f"Found {len(transactions)} transactions")
+        print(f"Found {len(transactions)} transactions before category filtering")
         
         if not transactions:
             print("No transactions found matching the criteria.")
             return None
         
+        # Apply additional category filter if we didn't already filter by category
+        # and category filter is specified
+        if category and not (month_str is None and start_date is None and end_date is None):
+            original_count = len(transactions)
+            transactions = [tx for tx in transactions if tx.category == category]
+            print(f"Applied category filter: {original_count} -> {len(transactions)} transactions")
+            
+            if not transactions:
+                print(f"No transactions found for category: {category}")
+                return None
+        
         # Convert to DataFrame
         data = []
         for tx in transactions:
             data.append({
+                'id': tx.id,
                 'date': tx.date,
                 'description': tx.description,
                 'amount': float(tx.amount),
                 'category': tx.category,
-                'source': tx.source
+                'source': tx.source,
+                'transaction_hash': tx.transaction_hash,
+                'month_str': tx.month_str
             })
         
         transactions_df = pd.DataFrame(data)
         
-        # Apply category filter if provided
-        if category and 'category' in transactions_df.columns:
-            transactions_df = transactions_df[transactions_df['category'] == category]
-        
         # Format the date column
         if 'date' in transactions_df.columns:
-            # Apply safe date parsing to each date
-            transactions_df['date'] = transactions_df['date'].apply(
-                lambda x: parse_date_safely(x).strftime('%Y-%m-%d') if parse_date_safely(x) else None
-            )
-            # Remove rows with invalid dates
-            transactions_df = transactions_df.dropna(subset=['date'])
+            # Ensure dates are datetime objects for proper formatting
+            transactions_df['date'] = pd.to_datetime(transactions_df['date'])
         
         # Format the amount column to 2 decimal places
         if 'amount' in transactions_df.columns:
             transactions_df['amount'] = transactions_df['amount'].round(2)
         
+        print(f"Returning DataFrame with {len(transactions_df)} transactions")
+        if not transactions_df.empty:
+            print(f"Sample categories: {transactions_df['category'].unique()[:5]}")
+        
         return transactions_df
-    
+
     def export_to_csv(self, df: pd.DataFrame, filename: str) -> None:
         """
         Export DataFrame to CSV.
