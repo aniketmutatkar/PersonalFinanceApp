@@ -270,18 +270,6 @@ class ReportingService:
         if 'amount' in transactions_df.columns:
             transactions_df['amount'] = transactions_df['amount'].round(2)
         
-        print("\nTransaction Report:")
-        if category:
-            print(f"Category: {category}")
-        if start_date:
-            print(f"From: {start_date}")
-        if end_date:
-            print(f"To: {end_date}")
-        if month_str:
-            print(f"Month: {month_str}")
-            
-        print(tabulate(transactions_df, headers='keys', tablefmt='psql', floatfmt='.2f'))
-        
         return transactions_df
     
     def export_to_csv(self, df: pd.DataFrame, filename: str) -> None:
