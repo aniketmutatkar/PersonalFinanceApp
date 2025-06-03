@@ -6,19 +6,25 @@ from decimal import Decimal
 import statistics
 from datetime import datetime
 
-from src.api.dependencies import get_monthly_summary_repository, get_transaction_repository
+from src.api.dependencies import (
+    get_monthly_summary_repository, 
+    get_transaction_repository,
+    get_config_manager
+)
 from src.repositories.monthly_summary_repository import MonthlySummaryRepository
 from src.repositories.transaction_repository import TransactionRepository
+from src.config.config_manager import ConfigManager
 
 router = APIRouter()
 
 @router.get("/overview")
-async def get_financial_overview(
+async def get_comprehensive_financial_overview(
     monthly_summary_repo: MonthlySummaryRepository = Depends(get_monthly_summary_repository),
-    transaction_repo: TransactionRepository = Depends(get_transaction_repository)
+    transaction_repo: TransactionRepository = Depends(get_transaction_repository),
+    config_manager: ConfigManager = Depends(get_config_manager)
 ):
     """
-    Get comprehensive financial statistics and insights from all historical data
+    Get comprehensive financial overview with actionable insights
     """
     try:
         # Get all monthly summaries
@@ -30,7 +36,7 @@ async def get_financial_overview(
                 "data_available": False
             }
         
-        # Investment categories
+        # Investment and expense categories
         investment_categories = ['Acorns', 'Wealthfront', 'Robinhood', 'Schwab']
         exclude_categories = ['Pay', 'Payment'] + investment_categories
         
@@ -41,121 +47,116 @@ async def get_financial_overview(
             "total_months": len(summaries)
         }
         
-        # Find highest and lowest spending months
-        highest_month = max(summaries, key=lambda s: float(s.total_minus_invest))
-        lowest_month = min(summaries, key=lambda s: float(s.total_minus_invest))
-        
-        # Calculate category statistics
-        category_data = {}
-        for summary in summaries:
-            for category, amount in summary.category_totals.items():
-                if category not in exclude_categories:
-                    if category not in category_data:
-                        category_data[category] = []
-                    category_data[category].append(float(amount))
-        
-        # Calculate category statistics
-        category_statistics = {}
-        for category, amounts in category_data.items():
-            if amounts:
-                total = sum(amounts)
-                average = statistics.mean(amounts)
-                volatility = statistics.stdev(amounts) if len(amounts) > 1 else 0
-                months_active = len([a for a in amounts if a > 0])
-                
-                category_statistics[category] = {
-                    "total": round(total, 2),
-                    "average": round(average, 2),
-                    "volatility": round(volatility, 2),
-                    "months_active": months_active,
-                    "consistency_score": round((months_active / len(amounts)) * 100, 1) if amounts else 0
-                }
-        
-        # Calculate yearly totals and growth
-        yearly_totals = {}
-        yearly_investments = {}
-        yearly_income = {}
-        
-        for summary in summaries:
-            year = summary.year
-            if year not in yearly_totals:
-                yearly_totals[year] = {
-                    "total_spending": 0,
-                    "total_investments": 0,
-                    "total_income": 0,
-                    "months": 0,
-                    "categories": {}
-                }
-            
-            # Spending (excluding investments)
-            yearly_totals[year]["total_spending"] += float(summary.total_minus_invest)
-            
-            # Investments
-            investment_total = sum(
-                float(summary.category_totals.get(cat, 0)) 
-                for cat in investment_categories
-            )
-            yearly_totals[year]["total_investments"] += abs(investment_total)
-            
-            # Income
-            yearly_totals[year]["total_income"] += abs(float(summary.category_totals.get('Pay', 0)))
-            
-            yearly_totals[year]["months"] += 1
-            
-            # Category totals by year
-            for category, amount in summary.category_totals.items():
-                if category not in exclude_categories:
-                    if category not in yearly_totals[year]["categories"]:
-                        yearly_totals[year]["categories"][category] = 0
-                    yearly_totals[year]["categories"][category] += float(amount)
-        
-        # Calculate year-over-year growth
-        years = sorted(yearly_totals.keys())
-        growth_trends = {}
-        
-        if len(years) > 1:
-            for i in range(1, len(years)):
-                current_year = years[i]
-                previous_year = years[i-1]
-                
-                current_spending = yearly_totals[current_year]["total_spending"]
-                previous_spending = yearly_totals[previous_year]["total_spending"]
-                
-                if previous_spending > 0:
-                    growth_rate = ((current_spending - previous_spending) / previous_spending) * 100
-                    growth_trends[f"{previous_year}_to_{current_year}"] = {
-                        "spending_growth": round(growth_rate, 1),
-                        "previous_year_spending": round(previous_spending, 2),
-                        "current_year_spending": round(current_spending, 2)
-                    }
-        
-        # Most and least volatile categories
-        volatility_rankings = sorted(
-            [(cat, stats["volatility"]) for cat, stats in category_statistics.items()],
-            key=lambda x: x[1],
-            reverse=True
+        # Calculate core financial metrics
+        total_income = sum(abs(float(s.category_totals.get('Pay', 0))) for s in summaries)
+        total_spending = sum(float(s.total_minus_invest) for s in summaries)
+        total_investments = sum(
+            sum(abs(float(s.category_totals.get(cat, 0))) for cat in investment_categories)
+            for s in summaries
         )
         
-        most_volatile = volatility_rankings[0] if volatility_rankings else ("N/A", 0)
-        least_volatile = volatility_rankings[-1] if volatility_rankings else ("N/A", 0)
+        # Financial growth (net worth change)
+        financial_growth = total_income - total_spending
+        monthly_financial_growth = financial_growth / len(summaries) if summaries else 0
         
-        # Top spending categories (all time)
+        # Calculate cash flow (income - all spending including investments)
+        monthly_income = total_income / len(summaries)
+        monthly_all_spending = (total_spending + total_investments) / len(summaries)
+        monthly_cash_flow = monthly_income - monthly_all_spending
+        
+        # Calculate investment rate (investments as % of total savings)
+        total_savings = financial_growth
+        investment_rate = (total_investments / total_savings * 100) if total_savings > 0 else 0
+        
+        # Calculate runway (months of expenses covered by savings)
+        monthly_expenses = total_spending / len(summaries)
+        runway_months = financial_growth / monthly_expenses if monthly_expenses > 0 else 0
+        
+        # Savings rate calculation
+        overall_savings_rate = ((total_income - total_spending) / total_income * 100) if total_income > 0 else 0
+        
+        # Top expense categories analysis
+        category_totals = {}
+        for summary in summaries:
+            for category, amount in summary.category_totals.items():
+                if category not in exclude_categories:
+                    if category not in category_totals:
+                        category_totals[category] = 0
+                    category_totals[category] += float(amount)
+        
+        # Get top 5 categories by total spending
         top_categories = sorted(
-            [(cat, stats["total"]) for cat, stats in category_statistics.items()],
+            [(cat, total) for cat, total in category_totals.items()],
             key=lambda x: x[1],
             reverse=True
         )[:5]
         
-        # Calculate net worth change (simplified)
-        total_income = sum(yearly["total_income"] for yearly in yearly_totals.values())
-        total_spending = sum(yearly["total_spending"] for yearly in yearly_totals.values())
-        total_investments = sum(yearly["total_investments"] for yearly in yearly_totals.values())
+        # Calculate spending patterns
+        spending_patterns = await _analyze_spending_patterns(summaries, investment_categories)
         
-        net_worth_change = total_income - total_spending + total_investments
+        # Budget adherence calculation
+        budget_adherence = await _calculate_budget_adherence(
+            summaries, config_manager, monthly_summary_repo
+        )
+        
+        # Alert flags
+        alert_flags = await _generate_alert_flags(summaries, category_totals, config_manager)
+        
+        # Year-over-year analysis
+        yearly_analysis = _calculate_yearly_trends(summaries, investment_categories)
+        
+        # Spending extremes
+        spending_amounts = [float(s.total_minus_invest) for s in summaries]
+        highest_month = max(summaries, key=lambda s: float(s.total_minus_invest))
+        lowest_month = min(summaries, key=lambda s: float(s.total_minus_invest))
         
         return {
             "data_available": True,
             "date_range": date_range,
+            
+            # Core metrics
+            "financial_summary": {
+                "total_income": round(total_income, 2),
+                "total_spending": round(total_spending, 2),
+                "total_investments": round(total_investments, 2),
+                "financial_growth": round(financial_growth, 2),
+                "monthly_financial_growth": round(monthly_financial_growth, 2),
+                "overall_savings_rate": round(overall_savings_rate, 1)
+            },
+            
+            # Cash flow insights
+            "cash_flow_analysis": {
+                "monthly_income": round(monthly_income, 2),
+                "monthly_spending": round(monthly_expenses, 2),
+                "monthly_investments": round(total_investments / len(summaries), 2),
+                "monthly_cash_flow": round(monthly_cash_flow, 2),
+                "runway_months": round(runway_months, 1),
+                "investment_rate": round(investment_rate, 1)
+            },
+            
+            # Spending intelligence
+            "spending_intelligence": {
+                "top_categories": [
+                    {"category": cat, "total_amount": round(total, 2), "monthly_average": round(total / len(summaries), 2)}
+                    for cat, total in top_categories
+                ],
+                "spending_patterns": spending_patterns,
+                "discretionary_ratio": spending_patterns.get("discretionary_ratio", 0),
+                "fixed_expenses": spending_patterns.get("fixed_expenses", 0)
+            },
+            
+            # Budget and warnings
+            "budget_health": {
+                "adherence_score": budget_adherence.get("score", 0),
+                "categories_on_track": budget_adherence.get("on_track", 0),
+                "total_categories": budget_adherence.get("total", 0),
+                "alert_flags": alert_flags
+            },
+            
+            # Year-over-year trends
+            "yearly_trends": yearly_analysis,
+            
+            # Spending extremes
             "spending_extremes": {
                 "highest_month": {
                     "month_year": highest_month.month_year,
@@ -165,35 +166,179 @@ async def get_financial_overview(
                     "month_year": lowest_month.month_year,
                     "amount": float(lowest_month.total_minus_invest)
                 }
-            },
-            "category_statistics": category_statistics,
-            "yearly_totals": yearly_totals,
-            "growth_trends": growth_trends,
-            "volatility_rankings": {
-                "most_volatile": {
-                    "category": most_volatile[0],
-                    "volatility": most_volatile[1]
-                },
-                "least_volatile": {
-                    "category": least_volatile[0],
-                    "volatility": least_volatile[1]
-                }
-            },
-            "top_categories": [
-                {"category": cat, "total": total} for cat, total in top_categories
-            ],
-            "financial_summary": {
-                "total_income": round(total_income, 2),
-                "total_spending": round(total_spending, 2),
-                "total_investments": round(total_investments, 2),
-                "net_worth_change": round(net_worth_change, 2),
-                "overall_savings_rate": round(((total_income - total_spending) / total_income * 100), 1) if total_income > 0 else 0
             }
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error calculating financial overview: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error calculating comprehensive overview: {str(e)}")
 
+
+async def _analyze_spending_patterns(summaries, investment_categories):
+    """Analyze spending patterns and calculate discretionary vs fixed expenses"""
+    
+    # Define typically fixed categories
+    fixed_categories = ['Rent', 'Insurance', 'Utilities']
+    
+    # Calculate averages
+    fixed_total = 0
+    discretionary_total = 0
+    
+    for summary in summaries:
+        for category, amount in summary.category_totals.items():
+            if category in ['Pay', 'Payment'] + investment_categories:
+                continue
+                
+            amount_val = float(amount)
+            if category in fixed_categories:
+                fixed_total += amount_val
+            else:
+                discretionary_total += amount_val
+    
+    monthly_fixed = fixed_total / len(summaries)
+    monthly_discretionary = discretionary_total / len(summaries)
+    total_monthly = monthly_fixed + monthly_discretionary
+    
+    # Calculate 3-month trend (simplified - using recent vs older averages)
+    recent_months = summaries[:3] if len(summaries) >= 6 else summaries[:len(summaries)//2]
+    older_months = summaries[3:6] if len(summaries) >= 6 else summaries[len(summaries)//2:]
+    
+    recent_avg = sum(float(s.total_minus_invest) for s in recent_months) / len(recent_months) if recent_months else 0
+    older_avg = sum(float(s.total_minus_invest) for s in older_months) / len(older_months) if older_months else recent_avg
+    
+    trend_percentage = ((recent_avg - older_avg) / older_avg * 100) if older_avg > 0 else 0
+    
+    return {
+        "fixed_expenses": round(monthly_fixed, 2),
+        "discretionary_expenses": round(monthly_discretionary, 2),
+        "discretionary_ratio": round((monthly_discretionary / total_monthly * 100), 1) if total_monthly > 0 else 0,
+        "three_month_trend": round(trend_percentage, 1)
+    }
+
+
+async def _calculate_budget_adherence(summaries, config_manager, monthly_summary_repo):
+    """Calculate budget adherence score"""
+    try:
+        budgets = config_manager.get_budgets()
+        
+        if not budgets:
+            return {"score": 0, "on_track": 0, "total": 0}
+        
+        # Use most recent month for adherence calculation
+        recent_summary = summaries[0]
+        
+        on_track = 0
+        total_categories = 0
+        
+        for category, budget_amount in budgets.items():
+            if budget_amount <= 0:
+                continue
+                
+            actual_amount = float(recent_summary.category_totals.get(category, 0))
+            total_categories += 1
+            
+            if actual_amount <= budget_amount:
+                on_track += 1
+        
+        adherence_score = (on_track / total_categories * 100) if total_categories > 0 else 0
+        
+        return {
+            "score": round(adherence_score, 1),
+            "on_track": on_track,
+            "total": total_categories
+        }
+        
+    except Exception:
+        return {"score": 0, "on_track": 0, "total": 0}
+
+
+async def _generate_alert_flags(summaries, category_totals, config_manager):
+    """Generate alert flags for concerning patterns"""
+    flags = []
+    
+    try:
+        budgets = config_manager.get_budgets()
+        recent_summary = summaries[0]
+        
+        # Check budget overruns
+        for category, budget_amount in budgets.items():
+            if budget_amount <= 0:
+                continue
+                
+            actual_amount = float(recent_summary.category_totals.get(category, 0))
+            if actual_amount > budget_amount * 1.1:  # 10% over budget
+                overage = ((actual_amount - budget_amount) / budget_amount * 100)
+                flags.append({
+                    "type": "budget_overage",
+                    "message": f"{category} spending up {overage:.0f}% vs budget",
+                    "severity": "warning"
+                })
+        
+        # Check subscription costs
+        subscription_categories = ['Subscriptions', 'Netflix', 'Spotify', 'Apple']
+        subscription_total = sum(
+            float(recent_summary.category_totals.get(cat, 0)) 
+            for cat in subscription_categories
+        )
+        
+        if subscription_total > 75:  # Arbitrary threshold
+            flags.append({
+                "type": "subscription_creep",
+                "message": f"Subscription costs: ${subscription_total:.0f}/month",
+                "severity": "info"
+            })
+        
+        # Check consecutive months over spending target
+        if len(summaries) >= 3:
+            recent_spending = [float(s.total_minus_invest) for s in summaries[:3]]
+            avg_spending = sum(float(s.total_minus_invest) for s in summaries) / len(summaries)
+            
+            if all(spending > avg_spending * 1.1 for spending in recent_spending):
+                flags.append({
+                    "type": "spending_pattern",
+                    "message": "3 months above spending target",
+                    "severity": "warning"
+                })
+        
+    except Exception:
+        # If there's any error, return empty flags
+        pass
+    
+    return flags[:3]  # Limit to 3 most important flags
+
+
+def _calculate_yearly_trends(summaries, investment_categories):
+    """Calculate year-over-year trends"""
+    yearly_data = {}
+    
+    for summary in summaries:
+        year = summary.year
+        if year not in yearly_data:
+            yearly_data[year] = {
+                "income": 0,
+                "spending": 0,
+                "investments": 0,
+                "months": 0
+            }
+        
+        yearly_data[year]["income"] += abs(float(summary.category_totals.get('Pay', 0)))
+        yearly_data[year]["spending"] += float(summary.total_minus_invest)
+        yearly_data[year]["investments"] += sum(
+            abs(float(summary.category_totals.get(cat, 0))) 
+            for cat in investment_categories
+        )
+        yearly_data[year]["months"] += 1
+    
+    # Calculate monthly averages
+    for year_data in yearly_data.values():
+        if year_data["months"] > 0:
+            year_data["monthly_income"] = year_data["income"] / year_data["months"]
+            year_data["monthly_spending"] = year_data["spending"] / year_data["months"]
+            year_data["monthly_investments"] = year_data["investments"] / year_data["months"]
+    
+    return yearly_data
+
+
+# Keep the existing endpoints
 @router.get("/year-comparison")
 async def get_year_comparison(
     monthly_summary_repo: MonthlySummaryRepository = Depends(get_monthly_summary_repository)
@@ -252,6 +397,7 @@ async def get_year_comparison(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating year comparison: {str(e)}")
+
 
 @router.get("/patterns")
 async def get_spending_patterns(
