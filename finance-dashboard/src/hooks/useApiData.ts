@@ -1,0 +1,149 @@
+// src/hooks/useApiData.ts
+import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import { api } from '../services/api';
+import { 
+  FinancialOverview, 
+  MonthlySummaryListResponse, 
+  Transaction, 
+  PagedResponse, 
+  BudgetAnalysisResponse 
+} from '../types/api';
+
+// Query keys for consistent caching
+export const QUERY_KEYS = {
+  financialOverview: ['financial-overview'] as const,
+  monthlySummaries: (year?: number) => ['monthly-summaries', year] as const,
+  monthlySummary: (monthYear: string) => ['monthly-summary', monthYear] as const,
+  transactions: (params: Record<string, any>) => ['transactions', params] as const,
+  transaction: (id: number) => ['transaction', id] as const,
+  budgets: ['budgets'] as const,
+  budgetAnalysis: (monthYear: string) => ['budget-analysis', monthYear] as const,
+  yearlyBudgetAnalysis: (year: number) => ['yearly-budget-analysis', year] as const,
+  categories: ['categories'] as const,
+  yearComparison: ['year-comparison'] as const,
+  spendingPatterns: ['spending-patterns'] as const,
+};
+
+// Financial Overview Hook
+export function useFinancialOverview(options?: UseQueryOptions<FinancialOverview>) {
+  return useQuery({
+    queryKey: QUERY_KEYS.financialOverview,
+    queryFn: () => api.getFinancialOverview(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    ...options,
+  });
+}
+
+// Monthly Summaries Hook
+export function useMonthlySummaries(year?: number, options?: UseQueryOptions<MonthlySummaryListResponse>) {
+  return useQuery({
+    queryKey: QUERY_KEYS.monthlySummaries(year),
+    queryFn: () => api.getMonthlySummaries(year),
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    ...options,
+  });
+}
+
+// Single Monthly Summary Hook
+export function useMonthlySummary(monthYear: string, options?: UseQueryOptions<any>) {
+  return useQuery({
+    queryKey: QUERY_KEYS.monthlySummary(monthYear),
+    queryFn: () => api.getMonthlySummary(monthYear),
+    enabled: !!monthYear,
+    staleTime: 10 * 60 * 1000,
+    ...options,
+  });
+}
+
+// Transactions Hook
+export function useTransactions(
+  params: {
+    category?: string;
+    start_date?: string;
+    end_date?: string;
+    month?: string;
+    page?: number;
+    page_size?: number;
+  } = {},
+  options?: UseQueryOptions<PagedResponse<Transaction>>
+) {
+  return useQuery({
+    queryKey: QUERY_KEYS.transactions(params),
+    queryFn: () => api.getTransactions(params),
+    staleTime: 5 * 60 * 1000,
+    ...options,
+  });
+}
+
+// Single Transaction Hook
+export function useTransaction(id: number, options?: UseQueryOptions<Transaction>) {
+  return useQuery({
+    queryKey: QUERY_KEYS.transaction(id),
+    queryFn: () => api.getTransaction(id),
+    enabled: !!id,
+    staleTime: 10 * 60 * 1000,
+    ...options,
+  });
+}
+
+// Budgets Hook
+export function useBudgets(options?: UseQueryOptions<Record<string, number>>) {
+  return useQuery({
+    queryKey: QUERY_KEYS.budgets,
+    queryFn: () => api.getBudgets(),
+    staleTime: 30 * 60 * 1000, // 30 minutes - budgets don't change often
+    ...options,
+  });
+}
+
+// Budget Analysis Hook
+export function useBudgetAnalysis(monthYear: string, options?: UseQueryOptions<BudgetAnalysisResponse>) {
+  return useQuery({
+    queryKey: QUERY_KEYS.budgetAnalysis(monthYear),
+    queryFn: () => api.getBudgetAnalysis(monthYear),
+    enabled: !!monthYear,
+    staleTime: 10 * 60 * 1000,
+    ...options,
+  });
+}
+
+// Yearly Budget Analysis Hook
+export function useYearlyBudgetAnalysis(year: number, options?: UseQueryOptions<any>) {
+  return useQuery({
+    queryKey: QUERY_KEYS.yearlyBudgetAnalysis(year),
+    queryFn: () => api.getYearlyBudgetAnalysis(year),
+    enabled: !!year,
+    staleTime: 15 * 60 * 1000,
+    ...options,
+  });
+}
+
+// Categories Hook
+export function useCategories(options?: UseQueryOptions<any>) {
+  return useQuery({
+    queryKey: QUERY_KEYS.categories,
+    queryFn: () => api.getCategories(),
+    staleTime: 60 * 60 * 1000, // 1 hour - categories are fairly static
+    ...options,
+  });
+}
+
+// Year Comparison Hook
+export function useYearComparison(options?: UseQueryOptions<any>) {
+  return useQuery({
+    queryKey: QUERY_KEYS.yearComparison,
+    queryFn: () => api.getYearComparison(),
+    staleTime: 15 * 60 * 1000,
+    ...options,
+  });
+}
+
+// Spending Patterns Hook
+export function useSpendingPatterns(options?: UseQueryOptions<any>) {
+  return useQuery({
+    queryKey: QUERY_KEYS.spendingPatterns,
+    queryFn: () => api.getSpendingPatterns(),
+    staleTime: 10 * 60 * 1000,
+    ...options,
+  });
+}

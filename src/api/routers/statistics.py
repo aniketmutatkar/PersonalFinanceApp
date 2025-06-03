@@ -61,16 +61,12 @@ async def get_comprehensive_financial_overview(
         
         # Calculate cash flow (income - all spending including investments)
         monthly_income = total_income / len(summaries)
-        monthly_all_spending = (total_spending + total_investments) / len(summaries)
-        monthly_cash_flow = monthly_income - monthly_all_spending
+        monthly_spending = total_spending / len(summaries)
+        monthly_investments = total_investments / len(summaries)
+        monthly_cash_flow = monthly_income - monthly_spending
         
         # Calculate investment rate (investments as % of total savings)
-        total_savings = financial_growth
-        investment_rate = (total_investments / total_savings * 100) if total_savings > 0 else 0
-        
-        # Calculate runway (months of expenses covered by savings)
-        monthly_expenses = total_spending / len(summaries)
-        runway_months = financial_growth / monthly_expenses if monthly_expenses > 0 else 0
+        investment_rate = (monthly_investments / monthly_income * 100) if monthly_income > 0 else 0
         
         # Savings rate calculation
         overall_savings_rate = ((total_income - total_spending) / total_income * 100) if total_income > 0 else 0
@@ -124,14 +120,12 @@ async def get_comprehensive_financial_overview(
                 "overall_savings_rate": round(overall_savings_rate, 1)
             },
             
-            # Cash flow insights
             "cash_flow_analysis": {
                 "monthly_income": round(monthly_income, 2),
-                "monthly_spending": round(monthly_expenses, 2),
-                "monthly_investments": round(total_investments / len(summaries), 2),
-                "monthly_cash_flow": round(monthly_cash_flow, 2),
-                "runway_months": round(runway_months, 1),
-                "investment_rate": round(investment_rate, 1)
+                "monthly_spending": round(monthly_spending, 2),  # Expenses only, no investments
+                "monthly_investments": round(monthly_investments, 2),
+                "monthly_cash_flow": round(monthly_cash_flow, 2),  # Income - expenses (positive should be normal)
+                "investment_rate": round(investment_rate, 1)  # Now shows % of income invested
             },
             
             # Spending intelligence

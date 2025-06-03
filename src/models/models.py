@@ -1,5 +1,6 @@
 """
 Core domain models for the Finance Tracker application.
+Updated to standardize date formats for consistent hashing.
 """
 
 from dataclasses import dataclass, field
@@ -7,6 +8,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Optional, Dict, List
 import hashlib
+import pandas as pd
 
 
 @dataclass
@@ -28,18 +30,26 @@ class Transaction:
     
     @classmethod
     def create_hash(cls, date_str, description, amount, source):
-        """Create a unique hash for a transaction to prevent duplicates"""
+        """
+        Create a unique hash for a transaction to prevent duplicates.
+        Always standardizes dates to MM/dd/yyyy format regardless of input.
+        """
         try:
-            # Convert date to a standard format
-            if not isinstance(date_str, str):
-                date_obj = date_str.strftime('%Y-%m-%d')
+            # Standardize the date to MM/dd/yyyy format
+            if isinstance(date_str, str):
+                # Parse the date string using pandas (handles multiple formats)
+                parsed_date = pd.to_datetime(date_str)
+                standardized_date = parsed_date.strftime('%m/%d/%Y')
             else:
-                date_obj = date_str
-        except:
-            date_obj = str(date_str)
+                # If it's already a date object, convert to MM/dd/yyyy
+                standardized_date = date_str.strftime('%m/%d/%Y')
+        except Exception as e:
+            # If parsing fails, use the original string (fallback)
+            print(f"Warning: Could not parse date '{date_str}', using as-is. Error: {e}")
+            standardized_date = str(date_str)
         
-        # Create a string with key transaction data
-        hash_string = f"{date_obj}|{description}|{amount}|{source}"
+        # Create a string with key transaction data using standardized date
+        hash_string = f"{standardized_date}|{description}|{amount}|{source}"
         
         # Create a hash
         return hashlib.md5(hash_string.encode()).hexdigest()

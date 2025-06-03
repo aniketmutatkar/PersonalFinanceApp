@@ -41,15 +41,24 @@ upload_sessions: Dict[str, dict] = {}
 
 @router.get("", response_model=PagedResponse[TransactionResponse])
 async def get_transactions(
-    category: Optional[str] = None,
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
-    month: Optional[str] = None,
-    pagination: PaginationParams = Depends(),
+    category: Optional[str] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    month: Optional[str] = Query(None),  # Added month parameter with Query
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=1000),
     reporting_service: ReportingService = Depends(get_reporting_service)
 ):
     """
     Get transactions with optional filters and pagination
+    
+    Parameters:
+    - category: Filter by category name
+    - start_date: Filter by start date (YYYY-MM-DD)
+    - end_date: Filter by end date (YYYY-MM-DD)
+    - month: Filter by month (YYYY-MM format, e.g., "2024-01")
+    - page: Page number for pagination
+    - page_size: Number of items per page
     """
     try:
         # Add debug logging
@@ -59,7 +68,7 @@ async def get_transactions(
             category=category,
             start_date=start_date,
             end_date=end_date,
-            month_str=month
+            month_str=month  # Pass month to reporting service
         )
         
         # Add more debug logging
@@ -71,6 +80,13 @@ async def get_transactions(
             print(f"Reporting service returned {len(transactions_df)} transactions")
             print(f"Columns: {transactions_df.columns.tolist()}")
             print(f"First few rows: {transactions_df.head().to_dict('records')}")
+        
+        # Create pagination object manually
+        pagination = type('PaginationParams', (), {
+            'page': page,
+            'page_size': page_size,
+            'offset': (page - 1) * page_size
+        })()
         
         if transactions_df is None or transactions_df.empty:
             return PagedResponse.create([], 0, pagination)
