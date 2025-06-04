@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { AlertCircle, Check, ArrowRight } from 'lucide-react';
 import { TransactionPreview, CategoryUpdate } from '../../types/api';
+import { useCategories } from '../../hooks/useApiData';
 
 interface TransactionReviewProps {
   transactions: TransactionPreview[];
@@ -18,6 +19,8 @@ export default function TransactionReview({
 }: TransactionReviewProps) {
   const [categoryUpdates, setCategoryUpdates] = useState<Record<string, string>>({});
   const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(new Set());
+  const { data: categoriesData } = useCategories();
+  const availableCategories = categoriesData?.categories || [];
 
   // Handle individual category change
   const handleCategoryChange = (tempId: string, newCategory: string) => {
@@ -210,19 +213,38 @@ export default function TransactionReview({
                       className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                       <option value="Misc">Select Category</option>
-                      {transaction.suggested_categories.map(category => (
-                        <option key={category} value={category}>
-                          {category} (suggested)
-                        </option>
-                      ))}
-                      {/* Add common categories not in suggestions */}
-                      {['Food', 'Shopping', 'Gas', 'Utilities', 'Entertainment'].map(category => (
-                        !transaction.suggested_categories.includes(category) && (
-                          <option key={category} value={category}>
-                            {category}
+                      
+                      {/* Suggested categories first */}
+                      {transaction.suggested_categories.length > 0 && (
+                        <>
+                          <optgroup label="Suggested">
+                            {transaction.suggested_categories.map(category => (
+                              <option key={`suggested-${category}`} value={category}>
+                                {category} (suggested)
+                              </option>
+                            ))}
+                          </optgroup>
+                        </>
+                      )}
+                      
+                      {/* All available categories from backend */}
+                      <optgroup label="All Categories">
+                        {availableCategories.map((category: any) => (
+                          <option key={category.name} value={category.name}>
+                            {category.name}
                           </option>
-                        )
-                      ))}
+                        ))}
+                        {/* Fallback categories if backend doesn't load */}
+                        {availableCategories.length === 0 && (
+                          <>
+                            <option value="Misc">Misc</option>
+                            <option value="Food">Food</option>
+                            <option value="Shopping">Shopping</option>
+                            <option value="Gas">Gas</option>
+                            <option value="Entertainment">Entertainment</option>
+                          </>
+                        )}
+                      </optgroup>
                     </select>
 
                     {/* Quick category buttons */}

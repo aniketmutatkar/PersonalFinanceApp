@@ -29,10 +29,15 @@ export default function FileUploadZone({
     const safeSize = file.size || 0;
     const safeLastModified = file.lastModified || Date.now();
     
-    return {
-      ...file, // This creates a plain object, losing File prototype
-      id: `${safeName}_${safeSize}_${safeLastModified}`
+    const fileDisplay = {
+      id: `${safeName}_${safeSize}_${safeLastModified}`,
+      name: safeName,
+      size: safeSize,
+      lastModified: safeLastModified,
+      type: file.type
     } as FileWithId;
+    
+    return fileDisplay;
   };
 
   // Handle file selection

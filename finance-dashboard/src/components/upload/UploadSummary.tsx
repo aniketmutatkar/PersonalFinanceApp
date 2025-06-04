@@ -10,6 +10,12 @@ interface UploadSummaryProps {
   className?: string;
 }
 
+interface UploadSummaryResponseEnhanced extends UploadSummaryResponse {
+  duplicates_found?: number;
+  total_processed?: number;
+  duplicate_details?: Record<string, number>; // filename -> duplicate count
+}
+
 export default function UploadSummary({ 
   summary, 
   onViewMonthly, 
@@ -70,49 +76,61 @@ export default function UploadSummary({
         </div>
       </div>
 
-      {/* File Breakdown */}
-      <div className="bg-gray-800 border border-gray-600 rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">File Breakdown</h3>
-        <div className="space-y-3">
-          {Object.entries(summary.transactions_by_file).map(([filename, count]) => (
-            <div key={filename} className="flex items-center justify-between py-2 border-b border-gray-700 last:border-b-0">
-              <div className="flex items-center space-x-3">
-                <FileText className="h-4 w-4 text-gray-400" />
-                <span className="text-white font-medium text-sm">{filename}</span>
-              </div>
-              <div className="text-gray-400 text-sm">
-                {count.toLocaleString()} transaction{count !== 1 ? 's' : ''}
-              </div>
+      {/* Duplicate Detection Results */}
+      {summary.total_transactions === 0 && (
+        <div className="bg-blue-900/20 border border-blue-800/30 rounded-lg p-6">
+          <h3 className="text-blue-400 font-medium text-lg mb-3">Duplicate Detection</h3>
+          <div className="space-y-2 text-blue-300 text-sm">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+              <span>All transactions were already in your database</span>
             </div>
-          ))}
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+              <span>No duplicate transactions were added</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+              <span>Your transaction integrity is maintained</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Enhanced File Breakdown with Duplicate Info */}
+      <div className="bg-gray-800 border border-gray-600 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">File Processing Results</h3>
+        <div className="space-y-3">
+          {Object.entries(summary.transactions_by_file).map(([filename, count]) => {
+            const isAllDuplicates = summary.total_transactions === 0;
+            return (
+              <div key={filename} className="flex items-center justify-between py-2 border-b border-gray-700 last:border-b-0">
+                <div className="flex items-center space-x-3">
+                  <FileText className="h-4 w-4 text-gray-400" />
+                  <span className="text-white font-medium text-sm">{filename}</span>
+                </div>
+                <div className="text-right">
+                  <div className="text-gray-400 text-sm">
+                    {count.toLocaleString()} transaction{count !== 1 ? 's' : ''} processed
+                  </div>
+                  {isAllDuplicates && (
+                    <div className="text-blue-400 text-xs">
+                      {count.toLocaleString()} duplicate{count !== 1 ? 's' : ''} detected
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
         
-        {avgTransactionsPerFile > 0 && (
+        {summary.total_transactions === 0 && (
           <div className="mt-4 pt-4 border-t border-gray-700">
-            <div className="text-gray-400 text-sm">
-              Average: {avgTransactionsPerFile} transactions per file
+            <div className="text-blue-400 text-sm font-medium">
+              ✓ Duplicate protection working perfectly
             </div>
           </div>
         )}
-      </div>
-
-      {/* Additional Insights */}
-      <div className="bg-blue-900/20 border border-blue-800/30 rounded-lg p-6">
-        <h3 className="text-blue-400 font-medium text-lg mb-3">What's Next?</h3>
-        <div className="space-y-2 text-blue-300 text-sm">
-          <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-            <span>Your monthly summaries have been automatically updated</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-            <span>Budget analysis reflects the new transaction data</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-            <span>Dashboard metrics have been refreshed with updated totals</span>
-          </div>
-        </div>
       </div>
 
       {/* Action Buttons */}
