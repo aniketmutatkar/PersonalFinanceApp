@@ -65,13 +65,16 @@ export default function TransactionTable({ transactions, isLoading }: Transactio
     }).format(Math.abs(amount));
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+  function formatDate(dateString: string): string {
+    const [year, month, day] = dateString.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
       month: 'short',
-      day: 'numeric',
-      year: 'numeric'
+      day: 'numeric'
     });
-  };
+  }
 
   if (isLoading) {
     return (

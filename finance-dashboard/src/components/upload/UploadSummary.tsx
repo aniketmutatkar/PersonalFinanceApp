@@ -10,23 +10,12 @@ interface UploadSummaryProps {
   className?: string;
 }
 
-interface UploadSummaryResponseEnhanced extends UploadSummaryResponse {
-  duplicates_found?: number;
-  total_processed?: number;
-  duplicate_details?: Record<string, number>; // filename -> duplicate count
-}
-
 export default function UploadSummary({ 
   summary, 
   onViewMonthly, 
   onUploadMore, 
   className = '' 
 }: UploadSummaryProps) {
-  // Calculate additional metrics
-  const avgTransactionsPerFile = summary.files_processed > 0 
-    ? Math.round(summary.total_transactions / summary.files_processed) 
-    : 0;
-
   // Get month information from transactions (simplified - would need backend data for real months)
   const estimatedMonths = Math.max(1, Math.ceil(summary.files_processed / 2)); // Rough estimate
 

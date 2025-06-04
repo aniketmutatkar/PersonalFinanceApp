@@ -12,6 +12,8 @@ export interface PagedResponse<T> {
   page: number;
   page_size: number;
   pages: number;
+  total_sum?: number;
+  avg_amount?: number;
 }
 
 // Financial Overview Types
@@ -113,6 +115,8 @@ export interface Transaction {
   source: string;
   transaction_hash: string;
   month_str: string;
+  total_sum?: number;
+  avg_amount?: number; 
 }
 
 export interface TransactionListResponse {
@@ -177,4 +181,10 @@ export interface UploadValidationError {
   file: string;
   error: string;
   type: 'size' | 'format' | 'content';
+}
+
+// Sort Types
+export interface SortConfig {
+  field: 'date' | 'description' | 'category' | 'amount' | 'source';
+  direction: 'asc' | 'desc';
 }

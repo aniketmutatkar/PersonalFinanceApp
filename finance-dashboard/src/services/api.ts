@@ -102,23 +102,44 @@ export class FinanceTrackerApi {
 
   // Transactions API
   async getTransactions(params: {
+    categories?: string[];
     category?: string;
+    description?: string;
     start_date?: string;
     end_date?: string;
     month?: string;
     page?: number;
     page_size?: number;
+    sort_field?: string;     // ADD THIS
+    sort_direction?: string; // ADD THIS
   } = {}): Promise<PagedResponse<Transaction>> {
     const queryParams = new URLSearchParams();
     
+    // Handle multiple categories
+    if (params.categories && params.categories.length > 0) {
+      params.categories.forEach(category => {
+        queryParams.append('categories', category);
+      });
+    }
+    // Legacy single category
+    else if (params.category) {
+      queryParams.append('category', params.category);
+    }
+    
+    // Add description search
+    if (params.description) {
+      queryParams.append('description', params.description);
+    }
+    
+    // Add other parameters  
     Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
+      if (value !== undefined && value !== null && 
+          key !== 'categories' && key !== 'category' && key !== 'description') {
         queryParams.append(key, value.toString());
       }
     });
     
-    const queryString = queryParams.toString();
-    return this.request<PagedResponse<Transaction>>(`/transactions?${queryString}`);
+    return this.request<PagedResponse<Transaction>>(`/transactions?${queryParams}`);
   }
 
   async getTransaction(transactionId: number): Promise<Transaction> {

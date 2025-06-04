@@ -13,13 +13,13 @@ from src.api.dependencies import (
     get_transaction_repository, 
     get_import_service, 
     get_reporting_service,
-    get_monthly_summary_repository  # Add this
+    get_monthly_summary_repository
 )
 from src.api.schemas.transaction import (
     TransactionResponse, 
     TransactionCreate, 
     FileUploadResponse,
-    BulkFileUploadResponse  # Add this
+    BulkFileUploadResponse
 )
 from src.api.schemas.upload import (
     TransactionPreview, 
@@ -41,72 +41,228 @@ from decimal import Decimal
 router = APIRouter()
 upload_sessions: Dict[str, dict] = {}
 
-@router.get("", response_model=PagedResponse[TransactionResponse])
+@router.get("")
 async def get_transactions(
-    category: Optional[str] = Query(None),
-    start_date: Optional[date] = Query(None),
-    end_date: Optional[date] = Query(None),
-    month: Optional[str] = Query(None),  # Added month parameter with Query
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=1000),
-    reporting_service: ReportingService = Depends(get_reporting_service)
+   categories: Optional[List[str]] = Query(default=None, description="Filter by categories (OR logic)"),
+   category: Optional[str] = Query(None, description="Single category filter (legacy)"),
+   description: Optional[str] = Query(None, description="Search in transaction descriptions"),
+   start_date: Optional[date] = Query(None, description="Start date filter (YYYY-MM-DD)"),
+   end_date: Optional[date] = Query(None, description="End date filter (YYYY-MM-DD)"),
+   month: Optional[str] = Query(None, description="Month filter (YYYY-MM format)"),
+   sort_field: Optional[str] = Query('date', description="Sort field: date, description, category, amount, source"), 
+   sort_direction: Optional[str] = Query('desc', description="Sort direction: asc, desc"),
+   page: int = Query(1, ge=1, description="Page number"),
+   page_size: int = Query(50, ge=1, le=1000, description="Items per page"),
+   reporting_service: ReportingService = Depends(get_reporting_service)
+):
+   """
+   Get transactions with advanced filtering and pagination
+   
+   **NEW FEATURES:**
+   - **Multiple categories**: Use `categories` parameter for OR logic filtering
+   - **Description search**: Use `description` parameter for case-insensitive search
+   - **Proper pagination**: Database-level pagination for better performance
+   
+   **Filter Examples:**
+   - Single category: `?category=Food`
+   - Multiple categories: `?categories=Food&categories=Groceries&categories=Amazon`
+   - Description search: `?description=whole foods`
+   - Combined filters: `?categories=Food&description=restaurant&month=2024-12`
+   """
+   try:
+       # Handle legacy single category parameter
+       filter_categories = None
+       if categories:
+           filter_categories = categories
+       elif category:
+           filter_categories = [category]
+       
+       # Calculate pagination offset
+       offset = (page - 1) * page_size
+       
+       print(f"Transaction API called with:")
+       print(f"  categories={filter_categories}")
+       print(f"  description={description}")
+       print(f"  start_date={start_date}")
+       print(f"  end_date={end_date}")
+       print(f"  month={month}")
+       print(f"  page={page}, page_size={page_size}, offset={offset}")
+       
+       # Get transactions using new reporting service method
+       transactions_df = reporting_service.get_transactions_report(
+           categories=filter_categories,
+           description=description,
+           start_date=start_date,
+           end_date=end_date,
+           month_str=month,
+           sort_field=sort_field,
+           sort_direction=sort_direction,
+           limit=page_size,
+           offset=offset
+       )
+       
+       if transactions_df is None or transactions_df.empty:
+           # Return consistent response format for empty results
+           return {
+               "items": [],
+               "total": 0,
+               "page": page,
+               "page_size": page_size,
+               "pages": 0,
+               "total_sum": 0.0,
+               "avg_amount": 0.0
+           }
+
+       # Get total count from DataFrame (included by reporting service)
+       total_count = transactions_df.iloc[0]['total_count'] if 'total_count' in transactions_df.columns else len(transactions_df)
+
+       # Convert to response models
+       transactions = []
+       for _, row in transactions_df.iterrows():
+           # Ensure dates are properly converted to date objects
+           tx_date = row['date']
+           if isinstance(tx_date, str):
+               tx_date = pd.to_datetime(tx_date).date()
+               
+           transaction = TransactionResponse(
+               id=row.get('id'),
+               date=tx_date,
+               description=row['description'],
+               amount=Decimal(str(row['amount'])),
+               category=row['category'],
+               source=row['source'],
+               transaction_hash=row.get('transaction_hash', ''),
+               month_str=row.get('month_str', tx_date.strftime('%Y-%m'))
+           )
+           transactions.append(transaction)
+
+       print(f"Returning {len(transactions)} transactions (total: {total_count})")
+
+       # Get aggregate data from the DataFrame (if available)
+       total_sum = 0.0
+       avg_amount = 0.0
+
+       if 'total_sum' in transactions_df.columns:
+           total_sum = float(transactions_df.iloc[0]['total_sum'])
+           avg_amount = float(transactions_df.iloc[0]['avg_amount'])
+
+       print(f"Final API aggregates: total_sum={total_sum}, avg_amount={avg_amount}")
+
+       # Calculate total pages
+       pages = (int(total_count) + page_size - 1) // page_size if total_count > 0 else 0
+
+       # Return consistent response format
+       response = {
+            "items": transactions,
+            "total": int(total_count),
+            "page": int(page),
+            "page_size": int(page_size),
+            "pages": int(pages),
+            "total_sum": float(total_sum),
+            "avg_amount": float(avg_amount)
+        }
+
+       # DEBUG: Print the actual response object
+       print(f"FINAL RESPONSE OBJECT: {response}")
+       print(f"Response keys: {list(response.keys())}")
+       print(f"Response total_sum type: {type(response['total_sum'])}")
+       print(f"Response total_sum value: {response['total_sum']}")
+
+       return response
+       
+   except Exception as e:
+       print(f"Error in get_transactions: {str(e)}")
+       raise APIError(status_code=500, detail=str(e))
+
+@router.post("/", response_model=TransactionResponse)
+async def create_transaction(
+    transaction: TransactionCreate,
+    transaction_repo: TransactionRepository = Depends(get_transaction_repository)
 ):
     """
-    Get transactions with optional filters and pagination
-    
-    Parameters:
-    - category: Filter by category name
-    - start_date: Filter by start date (YYYY-MM-DD)
-    - end_date: Filter by end date (YYYY-MM-DD)
-    - month: Filter by month (YYYY-MM format, e.g., "2024-01")
-    - page: Page number for pagination
-    - page_size: Number of items per page
+    Create a new transaction manually - updated for proper DATE handling
     """
     try:
-        transactions_df = reporting_service.get_transactions_report(
-            category=category,
-            start_date=start_date,
-            end_date=end_date,
-            month_str=month  # Pass month to reporting service
+        # Ensure we have a proper date object
+        tx_date = transaction.date
+        if isinstance(tx_date, str):
+            from datetime import datetime
+            tx_date = datetime.fromisoformat(tx_date).date()
+        
+        # Create transaction hash using standardized MM/dd/yyyy format
+        tx_hash = Transaction.create_hash(
+            tx_date,  # Pass date object directly
+            transaction.description,
+            transaction.amount,
+            transaction.source
         )
         
-        # Create pagination object manually
-        pagination = type('PaginationParams', (), {
-            'page': page,
-            'page_size': page_size,
-            'offset': (page - 1) * page_size
-        })()
+        # Create domain model
+        tx = Transaction(
+            date=tx_date,
+            description=transaction.description,
+            amount=transaction.amount,
+            category=transaction.category,
+            source=transaction.source,
+            transaction_hash=tx_hash
+        )
         
-        if transactions_df is None or transactions_df.empty:
-            return PagedResponse.create([], 0, pagination)
+        # Save to repository
+        saved_tx = transaction_repo.save(tx)
         
-        # Get total count
-        total_count = len(transactions_df)
-        
-        # Apply pagination
-        paginated_df = transactions_df.iloc[pagination.offset:pagination.offset + pagination.page_size]
-        
-        # Convert to response models
-        transactions = []
-        for _, row in paginated_df.iterrows():
-            # Ensure dates are properly converted to date objects
-            tx_date = row['date']
-            if isinstance(tx_date, str):
-                tx_date = pd.to_datetime(tx_date).date()
-                
-            transaction = TransactionResponse(
-                id=row.get('id'),
-                date=tx_date,
-                description=row['description'],
-                amount=Decimal(str(row['amount'])),
-                category=row['category'],
-                source=row['source'],
-                transaction_hash=row.get('transaction_hash', ''),
-                month_str=row.get('month_str', tx_date.strftime('%Y-%m'))
+        # Return response
+        return TransactionResponse(
+            id=saved_tx.id,
+            date=saved_tx.date,  # Will be serialized as YYYY-MM-DD by Pydantic
+            description=saved_tx.description,
+            amount=saved_tx.amount,
+            category=saved_tx.category,
+            source=saved_tx.source,
+            transaction_hash=saved_tx.transaction_hash,
+            month_str=saved_tx.month_str
+        )
+    except ValueError as e:
+        # Handle duplicate transaction error
+        if "already exists" in str(e):
+            raise APIError(
+                status_code=409,
+                detail="Transaction already exists",
+                error_code="DUPLICATE_TRANSACTION"
             )
-            transactions.append(transaction)
+        raise APIError(status_code=400, detail=str(e))
+    except Exception as e:
+        raise APIError(status_code=500, detail=str(e))
+
+@router.get("/{transaction_id}", response_model=TransactionResponse)
+async def get_transaction(
+    transaction_id: int,
+    transaction_repo: TransactionRepository = Depends(get_transaction_repository)
+):
+    """
+    Get a specific transaction by ID
+    """
+    try:
+        transaction = transaction_repo.find_by_id(transaction_id)
         
-        return PagedResponse.create(transactions, total_count, pagination)
+        if not transaction:
+            raise APIError(
+                status_code=404, 
+                detail=f"Transaction with ID {transaction_id} not found",
+                error_code="TRANSACTION_NOT_FOUND"
+            )
+        
+        return TransactionResponse(
+            id=transaction.id,
+            date=transaction.date,
+            description=transaction.description,
+            amount=transaction.amount,
+            category=transaction.category,
+            source=transaction.source,
+            transaction_hash=transaction.transaction_hash,
+            month_str=transaction.month_str
+        )
+    except APIError:
+        raise
     except Exception as e:
         raise APIError(status_code=500, detail=str(e))
 
@@ -231,6 +387,7 @@ async def confirm_upload(
 ):
     """
     Confirm and save uploaded transactions with reviewed categories
+    Updated for proper DATE handling
     """
     # Get session data
     session_data = upload_sessions.get(confirmation.session_id)
@@ -250,15 +407,18 @@ async def confirm_upload(
         if tx_data['temp_id'] in category_map:
             tx_data['Category'] = category_map[tx_data['temp_id']]
         
+        # Parse date properly
+        tx_date = pd.to_datetime(tx_data['Date']).date()
+        
         # Create Transaction object
         transaction = Transaction(
-            date=pd.to_datetime(tx_data['Date']).date(),
+            date=tx_date,  # Now a proper date object
             description=str(tx_data['Description']),
             amount=Decimal(str(tx_data['Amount'])),
             category=str(tx_data['Category']),
             source=str(tx_data['source']),
             transaction_hash=str(tx_data['transaction_hash']),
-            month_str=str(tx_data['month_str'])
+            month_str=tx_date.strftime('%Y-%m')  # Calculate month_str from date
         )
         transactions_to_save.append(transaction)
     
@@ -281,35 +441,6 @@ async def confirm_upload(
         )
     )
 
-# Helper functions
-def _suggest_categories(description: str, import_service) -> List[str]:
-    """Suggest possible categories based on description"""
-    suggestions = []
-    description_lower = description.lower()
-    
-    # Check each category's keywords
-    for name, category in import_service.categories.items():
-        if category.keywords:
-            for keyword in category.keywords:
-                if keyword.lower() in description_lower:
-                    suggestions.append(name)
-                    break
-    
-    # Return top 3 suggestions, excluding Misc and Payment
-    filtered_suggestions = [s for s in suggestions if s not in ['Misc', 'Payment']]
-    return filtered_suggestions[:3]
-
-def _cleanup_old_sessions():
-    """Remove sessions older than 1 hour"""
-    current_time = datetime.now()
-    expired = [
-        sid for sid, data in upload_sessions.items()
-        if (current_time - data['timestamp']) > timedelta(hours=1)
-    ]
-    for sid in expired:
-        del upload_sessions[sid]
-
-# Keep the existing single file upload for backwards compatibility
 @router.post("/upload", response_model=ApiResponse[FileUploadResponse])
 async def upload_file(
     file: UploadFile = File(...),
@@ -361,88 +492,30 @@ async def upload_file(
     except Exception as e:
         raise APIError(status_code=500, detail=str(e))
 
-@router.post("/", response_model=TransactionResponse)
-async def create_transaction(
-    transaction: TransactionCreate,
-    transaction_repo: TransactionRepository = Depends(get_transaction_repository)
-):
-    """
-    Create a new transaction manually
-    """
-    try:
-        # Create transaction hash
-        tx_hash = Transaction.create_hash(
-            transaction.date,
-            transaction.description,
-            transaction.amount,
-            transaction.source
-        )
-        
-        # Create domain model
-        tx = Transaction(
-            date=transaction.date,
-            description=transaction.description,
-            amount=transaction.amount,
-            category=transaction.category,
-            source=transaction.source,
-            transaction_hash=tx_hash
-        )
-        
-        # Save to repository
-        saved_tx = transaction_repo.save(tx)
-        
-        # Return response
-        return TransactionResponse(
-            id=saved_tx.id,
-            date=saved_tx.date,
-            description=saved_tx.description,
-            amount=saved_tx.amount,
-            category=saved_tx.category,
-            source=saved_tx.source,
-            transaction_hash=saved_tx.transaction_hash,
-            month_str=saved_tx.month_str
-        )
-    except ValueError as e:
-        # Handle duplicate transaction error
-        if "already exists" in str(e):
-            raise APIError(
-                status_code=409,
-                detail="Transaction already exists",
-                error_code="DUPLICATE_TRANSACTION"
-            )
-        raise APIError(status_code=400, detail=str(e))
-    except Exception as e:
-        raise APIError(status_code=500, detail=str(e))
+# Helper functions
+def _suggest_categories(description: str, import_service) -> List[str]:
+    """Suggest possible categories based on description"""
+    suggestions = []
+    description_lower = description.lower()
+    
+    # Check each category's keywords
+    for name, category in import_service.categories.items():
+        if category.keywords:
+            for keyword in category.keywords:
+                if keyword.lower() in description_lower:
+                    suggestions.append(name)
+                    break
+    
+    # Return top 3 suggestions, excluding Misc and Payment
+    filtered_suggestions = [s for s in suggestions if s not in ['Misc', 'Payment']]
+    return filtered_suggestions[:3]
 
-@router.get("/{transaction_id}", response_model=TransactionResponse)
-async def get_transaction(
-    transaction_id: int,
-    transaction_repo: TransactionRepository = Depends(get_transaction_repository)
-):
-    """
-    Get a specific transaction by ID
-    """
-    try:
-        transaction = transaction_repo.find_by_id(transaction_id)
-        
-        if not transaction:
-            raise APIError(
-                status_code=404, 
-                detail=f"Transaction with ID {transaction_id} not found",
-                error_code="TRANSACTION_NOT_FOUND"
-            )
-        
-        return TransactionResponse(
-            id=transaction.id,
-            date=transaction.date,
-            description=transaction.description,
-            amount=transaction.amount,
-            category=transaction.category,
-            source=transaction.source,
-            transaction_hash=transaction.transaction_hash,
-            month_str=transaction.month_str
-        )
-    except APIError:
-        raise
-    except Exception as e:
-        raise APIError(status_code=500, detail=str(e))
+def _cleanup_old_sessions():
+    """Remove sessions older than 1 hour"""
+    current_time = datetime.now()
+    expired = [
+        sid for sid, data in upload_sessions.items()
+        if (current_time - data['timestamp']) > timedelta(hours=1)
+    ]
+    for sid in expired:
+        del upload_sessions[sid]

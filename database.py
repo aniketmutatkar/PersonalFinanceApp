@@ -1,8 +1,9 @@
 """
 Database setup and session management for the Finance Tracker application.
+Updated to use proper DATE columns.
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, Float, Table, MetaData
+from sqlalchemy import create_engine, Column, Integer, String, Float, Date, Table, MetaData
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -25,17 +26,17 @@ def get_db_session():
 
 
 class TransactionModel(Base):
-    """SQLAlchemy model for Transaction table"""
+    """SQLAlchemy model for Transaction table with proper DATE column"""
     __tablename__ = 'transactions'
     
     id = Column(Integer, primary_key=True)
-    date = Column(String)
-    description = Column(String)
-    amount = Column(Float)
-    category = Column(String)
-    source = Column(String)
-    month = Column(String)  # Month in YYYY-MM format
-    transaction_hash = Column(String, unique=True)
+    date = Column(Date, nullable=False)  # Now using proper DATE column
+    description = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    category = Column(String, nullable=False)
+    source = Column(String, nullable=False)
+    month = Column(String, nullable=False)  # Month in YYYY-MM format
+    transaction_hash = Column(String, unique=True, nullable=False)
     
     def __repr__(self):
         return f"<Transaction(date='{self.date}', amount={self.amount}, category='{self.category}')>"
@@ -73,10 +74,10 @@ def create_monthly_summary_table(categories):
 
 def init_database(categories):
     """Initialize the SQLite database with required tables"""
-    # Create Transaction table
+    # Create Transaction table with new schema
     Base.metadata.create_all(bind=engine)
     
     # Create monthly_summary table
     create_monthly_summary_table(categories)
     
-    print("Database initialized successfully.")
+    print("Database initialized successfully with proper DATE columns.")

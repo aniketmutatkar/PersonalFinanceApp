@@ -2,7 +2,6 @@
 
 from typing import List, Dict, Set, Tuple, Optional
 from datetime import date
-from datetime import datetime
 from decimal import Decimal
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import text
@@ -14,43 +13,21 @@ from database import get_db_session, TransactionModel
 class TransactionRepository:
     """Repository for transaction database operations"""
     
-    def _parse_date(self, date_str):
-        """
-        Parse date string from database into date object.
-        Handles multiple date formats.
-        """
-        if not isinstance(date_str, str):
-            return date_str
-        
-        # Try MM/DD/YYYY format first (your current format)
-        try:
-            return datetime.strptime(date_str, '%m/%d/%Y').date()
-        except ValueError:
-            pass
-        
-        # Try YYYY-MM-DD format
-        try:
-            return datetime.strptime(date_str, '%Y-%m-%d').date()
-        except ValueError:
-            pass
-        
-        # Last resort - use pandas
-        try:
-            import pandas as pd
-            return pd.to_datetime(date_str).date()
-        except:
-            # If all else fails, return the original string
-            # This will cause Pydantic to fail, but at least we'll know
-            return date_str
-
     def _create_transaction_from_row(self, row):
         """
         Helper method to create Transaction domain entity from database row.
-        Handles date parsing consistently.
+        Now handles proper DATE columns.
         """
+        # Parse date from database - should be in YYYY-MM-DD format
+        tx_date = row.date
+        if isinstance(tx_date, str):
+            # Parse ISO date string
+            from datetime import datetime
+            tx_date = datetime.fromisoformat(tx_date).date()
+        
         return Transaction(
             id=row.id,
-            date=self._parse_date(row.date),
+            date=tx_date,
             description=row.description,
             amount=Decimal(str(row.amount)),
             category=row.category,
@@ -66,34 +43,26 @@ class TransactionRepository:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         month_str: Optional[str] = None,
+        sort_field: Optional[str] = None,
+        sort_direction: Optional[str] = None,
         limit: int = 1000,
         offset: int = 0
-    ) -> Tuple[List[Transaction], int]:
+    ) -> Tuple[List[Transaction], int, Decimal, Decimal]:  # CHANGED: Added Decimal, Decimal for total_sum, avg_amount
         """
         Find transactions with advanced filtering support.
         
-        Args:
-            categories: List of categories to filter by (OR logic)
-            description: Search term for description (case-insensitive)
-            start_date: Start date filter (inclusive)
-            end_date: End date filter (inclusive)
-            month_str: Month filter in YYYY-MM format
-            limit: Maximum number of results to return
-            offset: Number of results to skip (for pagination)
-            
         Returns:
-            Tuple of (transactions, total_count)
+            Tuple of (transactions, total_count, total_sum, average_amount)
         """
         session = get_db_session()
         
         try:
-            # Build WHERE clauses dynamically
+            # Build WHERE clauses dynamically (same as before)
             where_clauses = []
             params = {}
             
             # Category filter (OR logic)
             if categories and len(categories) > 0:
-                # Remove empty strings and None values
                 clean_categories = [cat for cat in categories if cat and cat.strip()]
                 if clean_categories:
                     placeholders = [f":category_{i}" for i in range(len(clean_categories))]
@@ -111,35 +80,53 @@ class TransactionRepository:
                 where_clauses.append("month = :month_str")
                 params["month_str"] = month_str.strip()
             elif start_date and end_date:
-                # Date range filter (only if no month filter)
-                where_clauses.append("date(date) BETWEEN date(:start_date) AND date(:end_date)")
+                where_clauses.append("date BETWEEN :start_date AND :end_date")
                 params["start_date"] = start_date.isoformat()
                 params["end_date"] = end_date.isoformat()
             elif start_date:
-                where_clauses.append("date(date) >= date(:start_date)")
+                where_clauses.append("date >= :start_date")
                 params["start_date"] = start_date.isoformat()
             elif end_date:
-                where_clauses.append("date(date) <= date(:end_date)")
+                where_clauses.append("date <= :end_date")
                 params["end_date"] = end_date.isoformat()
             
             # Build the WHERE clause
             where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
             
-            # Count query for total results
-            count_query = text(f"""
-            SELECT COUNT(*) as total
+            # NEW: Get aggregate statistics for ALL filtered transactions
+            aggregate_query = text(f"""
+            SELECT 
+                COUNT(*) as total_count,
+                COALESCE(SUM(amount), 0) as total_sum,
+                COALESCE(AVG(amount), 0) as avg_amount
             FROM transactions
             {where_sql}
             """)
             
-            count_result = session.execute(count_query, params).fetchone()
-            total_count = count_result[0] if count_result else 0
+            aggregate_result = session.execute(aggregate_query, params).fetchone()
+            total_count = aggregate_result[0] if aggregate_result else 0
+            total_sum = Decimal(str(aggregate_result[1])) if aggregate_result and aggregate_result[1] else Decimal('0')
+            avg_amount = Decimal(str(aggregate_result[2])) if aggregate_result and aggregate_result[2] else Decimal('0')
             
+            # Build sort clause
+            valid_sort_fields = ['date', 'description', 'category', 'amount', 'source']
+            valid_directions = ['asc', 'desc']
+
+            if sort_field not in valid_sort_fields:
+                sort_field = 'date'
+            if sort_direction not in valid_directions:
+                sort_direction = 'desc'
+
+            if sort_field == 'date':
+                order_clause = f"ORDER BY date {sort_direction.upper()}, id DESC"
+            else:
+                order_clause = f"ORDER BY {sort_field} {sort_direction.upper()}, date DESC, id DESC"
+
             # Main query with pagination
             main_query = text(f"""
             SELECT * FROM transactions
             {where_sql}
-            ORDER BY date(date) DESC, id DESC
+            {order_clause}
             LIMIT :limit OFFSET :offset
             """)
             
@@ -154,14 +141,14 @@ class TransactionRepository:
             for row in result:
                 transactions.append(self._create_transaction_from_row(row))
             
-            return transactions, total_count
+            return transactions, total_count, total_sum, avg_amount
             
         finally:
             session.close()
 
     def save(self, transaction: Transaction) -> Transaction:
         """
-        Save a transaction to the database.
+        Save a transaction to the database with proper DATE handling.
         
         Args:
             transaction: The transaction to save
@@ -177,7 +164,7 @@ class TransactionRepository:
         try:
             # Create a SQLAlchemy model from the domain entity
             transaction_model = TransactionModel(
-                date=str(transaction.date),
+                date=transaction.date,  # Store as ISO date string (YYYY-MM-DD)
                 description=transaction.description,
                 amount=float(transaction.amount),
                 category=transaction.category,
@@ -207,7 +194,7 @@ class TransactionRepository:
     
     def save_many(self, transactions: List[Transaction]) -> Tuple[int, Dict[str, Set[str]]]:
         """
-        Save multiple transactions to the database.
+        Save multiple transactions to the database with proper DATE handling.
         
         Args:
             transactions: List of transactions to save
@@ -229,7 +216,7 @@ class TransactionRepository:
             for transaction in transactions:
                 # Create a SQLAlchemy model
                 transaction_model = TransactionModel(
-                    date=str(transaction.date),
+                    date=transaction.date,
                     description=transaction.description,
                     amount=float(transaction.amount),
                     category=transaction.category,

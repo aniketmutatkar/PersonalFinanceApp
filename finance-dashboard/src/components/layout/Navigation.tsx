@@ -6,13 +6,15 @@ import {
   Calendar, 
   Target, 
   Upload,
-  DollarSign 
+  DollarSign,
+  Search  // Add Search icon for Transaction Explorer
 } from 'lucide-react';
 
 const navItems = [
   { to: '/', icon: Home, label: 'Dashboard' },
   { to: '/monthly', icon: Calendar, label: 'Monthly' },
   { to: '/budget', icon: Target, label: 'Budget' },
+  { to: '/transactions', icon: Search, label: 'Transactions' }, // Add this line
   { to: '/upload', icon: Upload, label: 'Upload' },
 ];
 
