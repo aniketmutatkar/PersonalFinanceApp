@@ -1,6 +1,4 @@
-"""
-Transaction repository for database operations related to transactions.
-"""
+# src/repositories/transaction_repository.py
 
 from typing import List, Dict, Set, Tuple, Optional
 from datetime import date
@@ -60,6 +58,106 @@ class TransactionRepository:
             transaction_hash=row.transaction_hash,
             month_str=row.month
         )
+
+    def find_with_filters(
+        self,
+        categories: Optional[List[str]] = None,
+        description: Optional[str] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        month_str: Optional[str] = None,
+        limit: int = 1000,
+        offset: int = 0
+    ) -> Tuple[List[Transaction], int]:
+        """
+        Find transactions with advanced filtering support.
+        
+        Args:
+            categories: List of categories to filter by (OR logic)
+            description: Search term for description (case-insensitive)
+            start_date: Start date filter (inclusive)
+            end_date: End date filter (inclusive)
+            month_str: Month filter in YYYY-MM format
+            limit: Maximum number of results to return
+            offset: Number of results to skip (for pagination)
+            
+        Returns:
+            Tuple of (transactions, total_count)
+        """
+        session = get_db_session()
+        
+        try:
+            # Build WHERE clauses dynamically
+            where_clauses = []
+            params = {}
+            
+            # Category filter (OR logic)
+            if categories and len(categories) > 0:
+                # Remove empty strings and None values
+                clean_categories = [cat for cat in categories if cat and cat.strip()]
+                if clean_categories:
+                    placeholders = [f":category_{i}" for i in range(len(clean_categories))]
+                    where_clauses.append(f"category IN ({', '.join(placeholders)})")
+                    for i, category in enumerate(clean_categories):
+                        params[f"category_{i}"] = category
+            
+            # Description search (case-insensitive)
+            if description and description.strip():
+                where_clauses.append("LOWER(description) LIKE LOWER(:description)")
+                params["description"] = f"%{description.strip()}%"
+            
+            # Month filter (takes priority over date range)
+            if month_str and month_str.strip():
+                where_clauses.append("month = :month_str")
+                params["month_str"] = month_str.strip()
+            elif start_date and end_date:
+                # Date range filter (only if no month filter)
+                where_clauses.append("date(date) BETWEEN date(:start_date) AND date(:end_date)")
+                params["start_date"] = start_date.isoformat()
+                params["end_date"] = end_date.isoformat()
+            elif start_date:
+                where_clauses.append("date(date) >= date(:start_date)")
+                params["start_date"] = start_date.isoformat()
+            elif end_date:
+                where_clauses.append("date(date) <= date(:end_date)")
+                params["end_date"] = end_date.isoformat()
+            
+            # Build the WHERE clause
+            where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+            
+            # Count query for total results
+            count_query = text(f"""
+            SELECT COUNT(*) as total
+            FROM transactions
+            {where_sql}
+            """)
+            
+            count_result = session.execute(count_query, params).fetchone()
+            total_count = count_result[0] if count_result else 0
+            
+            # Main query with pagination
+            main_query = text(f"""
+            SELECT * FROM transactions
+            {where_sql}
+            ORDER BY date(date) DESC, id DESC
+            LIMIT :limit OFFSET :offset
+            """)
+            
+            # Add pagination parameters
+            params["limit"] = limit
+            params["offset"] = offset
+            
+            result = session.execute(main_query, params).fetchall()
+            
+            # Convert to domain entities
+            transactions = []
+            for row in result:
+                transactions.append(self._create_transaction_from_row(row))
+            
+            return transactions, total_count
+            
+        finally:
+            session.close()
 
     def save(self, transaction: Transaction) -> Transaction:
         """
@@ -165,65 +263,16 @@ class TransactionRepository:
         
         return records_added, affected_data
     
+    # LEGACY METHODS - Keep for backward compatibility
     def find_by_month(self, month_str: str) -> List[Transaction]:
-        """
-        Find transactions for a specific month.
-        
-        Args:
-            month_str: Month string in format 'YYYY-MM'
-            
-        Returns:
-            List of transactions for that month
-        """
-        session = get_db_session()
-        
-        try:
-            query = text("""
-            SELECT * FROM transactions
-            WHERE month = :month_str
-            ORDER BY date(date) DESC
-            """)
-            
-            result = session.execute(query, {"month_str": month_str}).fetchall()
-            
-            # Convert to domain entities using helper
-            transactions = []
-            for row in result:
-                transactions.append(self._create_transaction_from_row(row))
-            
-            return transactions
-        finally:
-            session.close()
+        """Find transactions for a specific month. LEGACY METHOD."""
+        transactions, _ = self.find_with_filters(month_str=month_str, limit=10000)
+        return transactions
 
     def find_by_category(self, category: str) -> List[Transaction]:
-        """
-        Find transactions for a specific category.
-        
-        Args:
-            category: Category name
-            
-        Returns:
-            List of transactions in that category
-        """
-        session = get_db_session()
-        
-        try:
-            query = text("""
-            SELECT * FROM transactions
-            WHERE category = :category
-            ORDER BY date(date) DESC
-            """)
-            
-            result = session.execute(query, {"category": category}).fetchall()
-            
-            # Convert to domain entities using helper
-            transactions = []
-            for row in result:
-                transactions.append(self._create_transaction_from_row(row))
-            
-            return transactions
-        finally:
-            session.close()
+        """Find transactions for a specific category. LEGACY METHOD."""
+        transactions, _ = self.find_with_filters(categories=[category], limit=10000)
+        return transactions
 
     def find_by_id(self, transaction_id: int) -> Optional[Transaction]:
         """
@@ -253,50 +302,13 @@ class TransactionRepository:
             session.close()
 
     def find_by_date_range(self, start_date: date, end_date: date) -> List[Transaction]:
-        """
-        Find transactions within a date range.
-        
-        Args:
-            start_date: Start date (inclusive)
-            end_date: End date (inclusive)
-            
-        Returns:
-            List of transactions within the date range
-        """
-        session = get_db_session()
-        
-        try:
-            # Since your dates are stored as MM/DD/YYYY strings, we need to handle the comparison carefully
-            # Convert the input dates to the same format for comparison
-            start_date_str = start_date.strftime('%m/%d/%Y')
-            end_date_str = end_date.strftime('%m/%d/%Y')
-            
-            # Use a more flexible approach that works with your date format
-            query = text("""
-            SELECT * FROM transactions
-            WHERE date(substr('0' || date, -10)) BETWEEN date(:start_date) AND date(:end_date)
-            OR date(date) BETWEEN date(:start_date) AND date(:end_date)
-            ORDER BY date DESC
-            """)
-            
-            params = {
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat()
-            }
-            
-            result = session.execute(query, params).fetchall()
-            
-            # Convert to domain entities using helper
-            transactions = []
-            for row in result:
-                transaction = self._create_transaction_from_row(row)
-                # Double-check the date is in range after parsing
-                if start_date <= transaction.date <= end_date:
-                    transactions.append(transaction)
-            
-            return transactions
-        finally:
-            session.close()
+        """Find transactions within a date range. LEGACY METHOD."""
+        transactions, _ = self.find_with_filters(
+            start_date=start_date, 
+            end_date=end_date, 
+            limit=10000
+        )
+        return transactions
 
     def get_existing_hashes(self) -> List[str]:
         """
@@ -317,32 +329,7 @@ class TransactionRepository:
         finally:
             session.close()
 
-    def find_all_transactions(self, limit: int = 1000) -> List[Transaction]:
-        """
-        Find all transactions, with optional limit.
-        
-        Args:
-            limit: Maximum number of transactions to return
-            
-        Returns:
-            List of transactions
-        """
-        session = get_db_session()
-        
-        try:
-            query = text("""
-            SELECT * FROM transactions
-            ORDER BY date DESC
-            LIMIT :limit
-            """)
-            
-            result = session.execute(query, {"limit": limit}).fetchall()
-            
-            # Convert to domain entities using helper
-            transactions = []
-            for row in result:
-                transactions.append(self._create_transaction_from_row(row))
-            
-            return transactions
-        finally:
-            session.close()
+    def find_all_transactions(self, limit: int = 10000) -> List[Transaction]:
+        """Find all transactions, with optional limit. LEGACY METHOD."""
+        transactions, _ = self.find_with_filters(limit=limit)
+        return transactions

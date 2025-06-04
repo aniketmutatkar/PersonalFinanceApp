@@ -1,293 +1,474 @@
-"""
-Reporting service for generating financial reports.
-"""
+# src/api/routers/transactions.py
 
 import os
-from typing import Optional, Dict, List
+import tempfile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from typing import List, Optional, Dict
+from datetime import date, datetime, timedelta
 import pandas as pd
-from tabulate import tabulate
-from datetime import date
+import uuid
+import time
 
-from src.models.models import MonthlySummary, Transaction
+from src.api.dependencies import (
+    get_transaction_repository, 
+    get_import_service, 
+    get_reporting_service,
+    get_monthly_summary_repository
+)
+from src.api.schemas.transaction import (
+    TransactionResponse, 
+    TransactionCreate, 
+    FileUploadResponse,
+    BulkFileUploadResponse
+)
+from src.api.schemas.upload import (
+    TransactionPreview, 
+    FilePreviewResponse, 
+    CategoryUpdate, 
+    UploadConfirmation
+)
+
+from src.api.utils.pagination import PaginationParams, PagedResponse
+from src.api.utils.error_handling import APIError
+from src.api.utils.response import ApiResponse
+from src.services.import_service import ImportService
+from src.services.reporting_service import ReportingService
 from src.repositories.transaction_repository import TransactionRepository
 from src.repositories.monthly_summary_repository import MonthlySummaryRepository
-from src.utils.utilities import format_currency
+from src.models.models import Transaction
+from decimal import Decimal
 
-def parse_date_safely(date_str):
-    """Safely parse dates in various formats"""
-    if pd.isna(date_str) or date_str is None:
-        return None
+router = APIRouter()
+upload_sessions: Dict[str, dict] = {}
+
+@router.get("", response_model=PagedResponse[TransactionResponse])
+async def get_transactions(
+    categories: Optional[List[str]] = Query(None, description="Filter by categories (OR logic)"),
+    category: Optional[str] = Query(None, description="Single category filter (legacy)"),
+    description: Optional[str] = Query(None, description="Search in transaction descriptions"),
+    start_date: Optional[date] = Query(None, description="Start date filter (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="End date filter (YYYY-MM-DD)"),
+    month: Optional[str] = Query(None, description="Month filter (YYYY-MM format)"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=1000, description="Items per page"),
+    reporting_service: ReportingService = Depends(get_reporting_service)
+):
+    """
+    Get transactions with advanced filtering and pagination
     
-    if not isinstance(date_str, str):
-        try:
-            return pd.to_datetime(date_str).date()
-        except:
-            return None
+    **NEW FEATURES:**
+    - **Multiple categories**: Use `categories` parameter for OR logic filtering
+    - **Description search**: Use `description` parameter for case-insensitive search
+    - **Proper pagination**: Database-level pagination for better performance
     
-    # Try different date formats
-    date_formats = [
-        "%Y-%m-%d",      # 2025-02-03
-        "%m/%d/%Y",      # 02/03/2025
-        "%m-%d-%Y",      # 02-03-2025
-        "%Y/%m/%d",      # 2025/02/03
-        "%d/%m/%Y",      # 03/02/2025 (day first)
-    ]
-    
-    for fmt in date_formats:
-        try:
-            return pd.to_datetime(date_str, format=fmt).date()
-        except (ValueError, TypeError):
-            continue
-    
-    # Last resort - let pandas infer
+    **Filter Examples:**
+    - Single category: `?category=Food`
+    - Multiple categories: `?categories=Food&categories=Groceries&categories=Amazon`
+    - Description search: `?description=whole foods`
+    - Combined filters: `?categories=Food&description=restaurant&month=2024-12`
+    """
     try:
-        return pd.to_datetime(date_str, format='mixed').date()
-    except:
-        return None
-
-class ReportingService:
-    """Service for generating financial reports"""
-    
-    def __init__(
-        self,
-        transaction_repository: TransactionRepository,
-        monthly_summary_repository: MonthlySummaryRepository
-    ):
-        self.transaction_repository = transaction_repository
-        self.monthly_summary_repository = monthly_summary_repository
-    
-    def generate_monthly_summary_report(self) -> Optional[pd.DataFrame]:
-        """
-        Generate and display monthly summary report.
-        
-        Returns:
-            DataFrame with monthly summary data or None if no data
-        """
-        # Get all monthly summaries
-        summaries = self.monthly_summary_repository.find_all()
-        
-        if not summaries:
-            print("No monthly summary data available.")
-            return None
-        
-        # Convert to DataFrame
-        data = []
-        for summary in summaries:
-            row = {
-                'id': summary.id,
-                'month_year': summary.month_year,
-                'month': summary.month,
-                'year': summary.year,
-                'total': float(summary.total),
-                'investment_total': float(summary.investment_total),
-                'total_minus_invest': float(summary.total_minus_invest)
-            }
-            
-            # Add category totals
-            for category, amount in summary.category_totals.items():
-                row[category] = float(amount)
-            
-            data.append(row)
-        
-        # Create DataFrame
-        summary_df = pd.DataFrame(data)
-        
-        # Create a display copy
-        display_df = summary_df.copy()
-        
-        # Drop ID column for display
-        if 'id' in display_df.columns:
-            display_df = display_df.drop(['id'], axis=1)
-        
-        # Format month_year as index
-        display_df.set_index('month_year', inplace=True)
-        
-        # Drop redundant columns
-        display_df = display_df.drop(['month', 'year'], axis=1)
-        
-        print("\nMonthly Expense Summary:")
-        print(tabulate(display_df, headers='keys', tablefmt='psql', floatfmt='.2f'))
-        
-        return summary_df
-    
-    def generate_category_report(self, category: Optional[str] = None) -> Optional[pd.DataFrame]:
-        """
-        Generate a report for a specific category or all categories.
-        
-        Args:
-            category: Optional category name to filter by
-            
-        Returns:
-            DataFrame with category data
-        """
-        # Get all monthly summaries
-        summaries = self.monthly_summary_repository.find_all()
-        
-        if not summaries:
-            print("No monthly summary data available.")
-            return None
-        
-        if category:
-            # Report for a specific category
-            data = []
-            for summary in summaries:
-                if category in summary.category_totals:
-                    data.append({
-                        'month_year': summary.month_year,
-                        'amount': float(summary.category_totals[category])
-                    })
-            
-            if not data:
-                print(f"No data found for category: {category}")
-                return None
-                
-            category_df = pd.DataFrame(data)
-            
-            print(f"\nExpense Report for {category}:")
-            print(tabulate(category_df, headers='keys', tablefmt='psql', floatfmt='.2f'))
-            
-            return category_df
-        else:
-            # Report with category totals
-            # First convert summaries to DataFrame (reuse code from monthly summary)
-            data = []
-            for summary in summaries:
-                row = {
-                    'month_year': summary.month_year,
-                    'total': float(summary.total),
-                    'investment_total': float(summary.investment_total),
-                    'total_minus_invest': float(summary.total_minus_invest)
-                }
-                
-                # Add category totals
-                for category, amount in summary.category_totals.items():
-                    row[category] = float(amount)
-                
-                data.append(row)
-            
-            summary_df = pd.DataFrame(data)
-            
-            # Calculate averages
-            numeric_columns = summary_df.select_dtypes(include=['number']).columns.tolist()
-            
-            averages = summary_df[numeric_columns].mean().to_frame().T
-            averages['month_year'] = 'Average'
-            
-            # Reorder columns to match summary_df
-            averages = averages[['month_year'] + numeric_columns]
-            
-            # Combine with summary data
-            combined_df = pd.concat([summary_df[['month_year'] + numeric_columns], averages])
-            
-            print("\nCategory Summary with Averages:")
-            print(tabulate(combined_df, headers='keys', tablefmt='psql', floatfmt='.2f'))
-            
-            return combined_df
-    
-    def get_transactions_report(
-        self, 
-        category: Optional[str] = None, 
-        start_date: Optional[date] = None, 
-        end_date: Optional[date] = None,
-        month_str: Optional[str] = None
-    ) -> Optional[pd.DataFrame]:
-        """
-        Get detailed transaction report with optional filters.
-        
-        Args:
-            category: Optional category filter
-            start_date: Optional start date filter
-            end_date: Optional end date filter
-            month_str: Optional month string filter (YYYY-MM)
-            
-        Returns:
-            DataFrame with transaction data
-        """
-        # Add debug logging
-        print(f"Reporting service get_transactions_report called with: category={category}, start_date={start_date}, end_date={end_date}, month_str={month_str}")
-        
-        # Get transactions based on filters - prioritize specific filters
-        transactions = []
-        
-        if month_str:
-            # If month is provided, use that
-            print(f"Finding transactions by month: {month_str}")
-            transactions = self.transaction_repository.find_by_month(month_str)
-        elif start_date and end_date:
-            # If date range is provided, use that
-            print(f"Finding transactions by date range: {start_date} to {end_date}")
-            transactions = self.transaction_repository.find_by_date_range(start_date, end_date)
+        # Handle legacy single category parameter
+        filter_categories = None
+        if categories:
+            filter_categories = categories
         elif category:
-            # If only category is provided, use that
-            print(f"Finding transactions by category: {category}")
-            transactions = self.transaction_repository.find_by_category(category)
-        else:
-            # No filters, get all transactions
-            print("No filters, getting all transactions")
-            transactions = self.transaction_repository.find_all_transactions()
+            filter_categories = [category]
         
-        print(f"Found {len(transactions)} transactions before category filtering")
+        # Calculate pagination offset
+        offset = (page - 1) * page_size
         
-        if not transactions:
-            print("No transactions found matching the criteria.")
-            return None
+        print(f"Transaction API called with:")
+        print(f"  categories={filter_categories}")
+        print(f"  description={description}")
+        print(f"  start_date={start_date}")
+        print(f"  end_date={end_date}")
+        print(f"  month={month}")
+        print(f"  page={page}, page_size={page_size}, offset={offset}")
         
-        # Apply additional category filter if we didn't already filter by category
-        # and category filter is specified
-        if category and not (month_str is None and start_date is None and end_date is None):
-            original_count = len(transactions)
-            transactions = [tx for tx in transactions if tx.category == category]
-            print(f"Applied category filter: {original_count} -> {len(transactions)} transactions")
-            
-            if not transactions:
-                print(f"No transactions found for category: {category}")
-                return None
+        # Get transactions using new reporting service method
+        transactions_df = reporting_service.get_transactions_report(
+            categories=filter_categories,
+            description=description,
+            start_date=start_date,
+            end_date=end_date,
+            month_str=month,
+            limit=page_size,
+            offset=offset
+        )
         
-        # Convert to DataFrame
-        data = []
-        for tx in transactions:
-            data.append({
-                'id': tx.id,
-                'date': tx.date,
-                'description': tx.description,
-                'amount': float(tx.amount),
-                'category': tx.category,
-                'source': tx.source,
-                'transaction_hash': tx.transaction_hash,
-                'month_str': tx.month_str
-            })
+        # Create pagination object manually
+        pagination = type('PaginationParams', (), {
+            'page': page,
+            'page_size': page_size,
+            'offset': offset
+        })()
         
-        transactions_df = pd.DataFrame(data)
+        if transactions_df is None or transactions_df.empty:
+            return PagedResponse.create([], 0, pagination)
         
-        # Format the date column
-        if 'date' in transactions_df.columns:
-            # Ensure dates are datetime objects for proper formatting
-            transactions_df['date'] = pd.to_datetime(transactions_df['date'])
+        # Get total count from DataFrame (included by reporting service)
+        total_count = transactions_df.iloc[0]['total_count'] if 'total_count' in transactions_df.columns else len(transactions_df)
         
-        # Format the amount column to 2 decimal places
-        if 'amount' in transactions_df.columns:
-            transactions_df['amount'] = transactions_df['amount'].round(2)
+        # Convert to response models
+        transactions = []
+        for _, row in transactions_df.iterrows():
+            # Ensure dates are properly converted to date objects
+            tx_date = row['date']
+            if isinstance(tx_date, str):
+                tx_date = pd.to_datetime(tx_date).date()
+                
+            transaction = TransactionResponse(
+                id=row.get('id'),
+                date=tx_date,
+                description=row['description'],
+                amount=Decimal(str(row['amount'])),
+                category=row['category'],
+                source=row['source'],
+                transaction_hash=row.get('transaction_hash', ''),
+                month_str=row.get('month_str', tx_date.strftime('%Y-%m'))
+            )
+            transactions.append(transaction)
         
-        print(f"Returning DataFrame with {len(transactions_df)} transactions")
-        if not transactions_df.empty:
-            print(f"Sample categories: {transactions_df['category'].unique()[:5]}")
+        print(f"Returning {len(transactions)} transactions (total: {total_count})")
+        return PagedResponse.create(transactions, int(total_count), pagination)
         
-        return transactions_df
+    except Exception as e:
+        print(f"Error in get_transactions: {str(e)}")
+        raise APIError(status_code=500, detail=str(e))
 
-    def export_to_csv(self, df: pd.DataFrame, filename: str) -> None:
-        """
-        Export DataFrame to CSV.
+@router.post("/", response_model=TransactionResponse)
+async def create_transaction(
+    transaction: TransactionCreate,
+    transaction_repo: TransactionRepository = Depends(get_transaction_repository)
+):
+    """
+    Create a new transaction manually
+    """
+    try:
+        # Create transaction hash
+        tx_hash = Transaction.create_hash(
+            transaction.date,
+            transaction.description,
+            transaction.amount,
+            transaction.source
+        )
         
-        Args:
-            df: DataFrame to export
-            filename: Output filename
-        """
-        if df is None:
-            print(f"No data to export to {filename}")
-            return
+        # Create domain model
+        tx = Transaction(
+            date=transaction.date,
+            description=transaction.description,
+            amount=transaction.amount,
+            category=transaction.category,
+            source=transaction.source,
+            transaction_hash=tx_hash
+        )
         
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        # Save to repository
+        saved_tx = transaction_repo.save(tx)
         
-        df.to_csv(filename, index=False)
-        print(f"Exported data to {filename}")
+        # Return response
+        return TransactionResponse(
+            id=saved_tx.id,
+            date=saved_tx.date,
+            description=saved_tx.description,
+            amount=saved_tx.amount,
+            category=saved_tx.category,
+            source=saved_tx.source,
+            transaction_hash=saved_tx.transaction_hash,
+            month_str=saved_tx.month_str
+        )
+    except ValueError as e:
+        # Handle duplicate transaction error
+        if "already exists" in str(e):
+            raise APIError(
+                status_code=409,
+                detail="Transaction already exists",
+                error_code="DUPLICATE_TRANSACTION"
+            )
+        raise APIError(status_code=400, detail=str(e))
+    except Exception as e:
+        raise APIError(status_code=500, detail=str(e))
+
+@router.get("/{transaction_id}", response_model=TransactionResponse)
+async def get_transaction(
+    transaction_id: int,
+    transaction_repo: TransactionRepository = Depends(get_transaction_repository)
+):
+    """
+    Get a specific transaction by ID
+    """
+    try:
+        transaction = transaction_repo.find_by_id(transaction_id)
+        
+        if not transaction:
+            raise APIError(
+                status_code=404, 
+                detail=f"Transaction with ID {transaction_id} not found",
+                error_code="TRANSACTION_NOT_FOUND"
+            )
+        
+        return TransactionResponse(
+            id=transaction.id,
+            date=transaction.date,
+            description=transaction.description,
+            amount=transaction.amount,
+            category=transaction.category,
+            source=transaction.source,
+            transaction_hash=transaction.transaction_hash,
+            month_str=transaction.month_str
+        )
+    except APIError:
+        raise
+    except Exception as e:
+        raise APIError(status_code=500, detail=str(e))
+
+@router.post("/upload/preview", response_model=ApiResponse[FilePreviewResponse])
+async def preview_upload(
+    files: List[UploadFile] = File(...),
+    import_service: ImportService = Depends(get_import_service)
+):
+    """
+    Preview uploaded files and identify transactions needing review
+    """
+    session_id = str(uuid.uuid4())
+    all_transactions = []
+    all_misc_transactions = []
+    files_info = {}
+    
+    for file in files:
+        # Validate and ensure we have a proper filename
+        original_filename = getattr(file, 'filename', None)
+        if not original_filename or not isinstance(original_filename, str):
+            original_filename = f"uploaded_file_{int(time.time())}.csv"
+        
+        # Ensure the filename has a .csv extension for proper processing
+        if not original_filename.lower().endswith('.csv'):
+            original_filename += '.csv'
+        
+        # Create a temporary file with proper extension
+        file_extension = os.path.splitext(original_filename)[1] or '.csv'
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
+            try:
+                content = await file.read()
+                temp_file.write(content)
+                temp_file_path = temp_file.name
+            except Exception as e:
+                continue
+        
+        try:
+            # Process the file with the original filename for bank detection
+            df = import_service.process_bank_file(temp_file_path, original_filename=original_filename)
+            
+            if df is not None and not df.empty:
+                # Add temporary IDs to each transaction
+                transactions = []
+                for _, row in df.iterrows():
+                    tx_dict = row.to_dict()
+                    tx_dict['temp_id'] = str(uuid.uuid4())
+                    tx_dict['original_filename'] = original_filename
+                    transactions.append(tx_dict)
+                
+                all_transactions.extend(transactions)
+                files_info[original_filename] = len(transactions)
+                
+                # Extract Misc transactions for review
+                for tx in transactions:
+                    if tx.get('Category') == 'Misc':
+                        try:
+                            # Convert date string to date object
+                            if isinstance(tx['Date'], str):
+                                tx_date = pd.to_datetime(tx['Date']).date()
+                            else:
+                                tx_date = tx['Date']
+                            
+                            # Convert amount to Decimal
+                            tx_amount = Decimal(str(tx['Amount']))
+                            
+                            # Get category suggestions
+                            suggestions = _suggest_categories(str(tx['Description']), import_service)
+                            
+                            # Create preview object
+                            preview = TransactionPreview(
+                                temp_id=tx['temp_id'],
+                                date=tx_date,
+                                description=str(tx['Description']),
+                                amount=tx_amount,
+                                category=str(tx['Category']),
+                                source=str(tx['source']),
+                                suggested_categories=suggestions
+                            )
+                            all_misc_transactions.append(preview)
+                            
+                        except Exception:
+                            # Skip transactions that can't be processed
+                            continue
+                            
+        except Exception:
+            # Skip files that can't be processed
+            continue
+        finally:
+            # Clean up the temporary file
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass
+    
+    # Store session data
+    upload_sessions[session_id] = {
+        'transactions': all_transactions,
+        'timestamp': datetime.now(),
+        'files_info': files_info
+    }
+    
+    # Clean up old sessions
+    _cleanup_old_sessions()
+    
+    return ApiResponse.success(
+        data=FilePreviewResponse(
+            session_id=session_id,
+            total_transactions=len(all_transactions),
+            misc_transactions=all_misc_transactions,
+            requires_review=len(all_misc_transactions) > 0,
+            files_processed=len(files_info)
+        )
+    )
+
+@router.post("/upload/confirm", response_model=ApiResponse[BulkFileUploadResponse])
+async def confirm_upload(
+    confirmation: UploadConfirmation,
+    import_service: ImportService = Depends(get_import_service),
+    transaction_repo: TransactionRepository = Depends(get_transaction_repository),
+    monthly_summary_repo: MonthlySummaryRepository = Depends(get_monthly_summary_repository)
+):
+    """
+    Confirm and save uploaded transactions with reviewed categories
+    """
+    # Get session data
+    session_data = upload_sessions.get(confirmation.session_id)
+    if not session_data:
+        raise APIError(
+            status_code=404,
+            detail="Upload session not found or expired",
+            error_code="SESSION_NOT_FOUND"
+        )
+    
+    # Apply category updates
+    category_map = {cu.temp_id: cu.new_category for cu in confirmation.category_updates}
+    
+    transactions_to_save = []
+    for tx_data in session_data['transactions']:
+        # Update category if it was reviewed
+        if tx_data['temp_id'] in category_map:
+            tx_data['Category'] = category_map[tx_data['temp_id']]
+        
+        # Create Transaction object
+        transaction = Transaction(
+            date=pd.to_datetime(tx_data['Date']).date(),
+            description=str(tx_data['Description']),
+            amount=Decimal(str(tx_data['Amount'])),
+            category=str(tx_data['Category']),
+            source=str(tx_data['source']),
+            transaction_hash=str(tx_data['transaction_hash']),
+            month_str=str(tx_data['month_str'])
+        )
+        transactions_to_save.append(transaction)
+    
+    # Save all transactions
+    records_added, affected_data = transaction_repo.save_many(transactions_to_save)
+    
+    # Update monthly summaries
+    if affected_data:
+        monthly_summary_repo.update_from_transactions(affected_data, import_service.categories)
+    
+    # Clean up session
+    del upload_sessions[confirmation.session_id]
+    
+    return ApiResponse.success(
+        data=BulkFileUploadResponse(
+            files_processed=len(session_data['files_info']),
+            total_transactions=records_added,
+            transactions_by_file=session_data['files_info'],
+            message=f"Successfully saved {records_added} new transactions"
+        )
+    )
+
+@router.post("/upload", response_model=ApiResponse[FileUploadResponse])
+async def upload_file(
+    file: UploadFile = File(...),
+    import_service: ImportService = Depends(get_import_service)
+):
+    """
+    Upload and process a single transaction file (legacy endpoint)
+    """
+    try:
+        # Create a temporary file to store the upload
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
+            # Write the uploaded file content
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+        
+        try:
+            # Process the file with original filename
+            df = import_service.process_bank_file(temp_file_path, original_filename=file.filename)
+            
+            if df is None or df.empty:
+                response_data = FileUploadResponse(
+                    message="No new transactions found",
+                    transactions_count=0,
+                    categories=[]
+                )
+                
+                return ApiResponse.success(
+                    data=response_data,
+                    message="File processed but no new transactions found",
+                    meta={"filename": file.filename}
+                )
+            
+            # Return the response
+            response_data = FileUploadResponse(
+                message="File processed successfully",
+                transactions_count=len(df),
+                categories=df["Category"].unique().tolist() if "Category" in df.columns else []
+            )
+            
+            return ApiResponse.success(
+                data=response_data,
+                message="File uploaded and processed successfully",
+                meta={"filename": file.filename, "content_type": file.content_type}
+            )
+        finally:
+            # Clean up the temporary file
+            os.unlink(temp_file_path)
+    except Exception as e:
+        raise APIError(status_code=500, detail=str(e))
+
+# Helper functions
+def _suggest_categories(description: str, import_service) -> List[str]:
+    """Suggest possible categories based on description"""
+    suggestions = []
+    description_lower = description.lower()
+    
+    # Check each category's keywords
+    for name, category in import_service.categories.items():
+        if category.keywords:
+            for keyword in category.keywords:
+                if keyword.lower() in description_lower:
+                    suggestions.append(name)
+                    break
+    
+    # Return top 3 suggestions, excluding Misc and Payment
+    filtered_suggestions = [s for s in suggestions if s not in ['Misc', 'Payment']]
+    return filtered_suggestions[:3]
+
+def _cleanup_old_sessions():
+    """Remove sessions older than 1 hour"""
+    current_time = datetime.now()
+    expired = [
+        sid for sid, data in upload_sessions.items()
+        if (current_time - data['timestamp']) > timedelta(hours=1)
+    ]
+    for sid in expired:
+        del upload_sessions[sid]
