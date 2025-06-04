@@ -6,7 +6,11 @@ import {
   Transaction,
   PagedResponse,
   BudgetAnalysisResponse,
-  TransactionListResponse
+  TransactionListResponse,
+  ApiResponse,
+  FilePreviewResponse,
+  UploadConfirmation,
+  UploadSummaryResponse
 } from '../types/api';
 
 // API Client Class
@@ -47,6 +51,28 @@ export class FinanceTrackerApi {
       return await response.json();
     } catch (error) {
       console.error('API request error:', error);
+      throw error;
+    }
+  }
+
+  private async requestWithFile<T>(endpoint: string, formData: FormData): Promise<T> {
+    const url = `${this.baseUrl}${endpoint}`;
+    
+    try {
+      console.log(`API File Upload: ${url}`);
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+        throw new Error(errorData.error?.message || `HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('API file upload error:', error);
       throw error;
     }
   }
@@ -97,6 +123,24 @@ export class FinanceTrackerApi {
 
   async getTransaction(transactionId: number): Promise<Transaction> {
     return this.request<Transaction>(`/transactions/${transactionId}`);
+  }
+
+  async uploadFilesPreview(files: File[]): Promise<ApiResponse<FilePreviewResponse>> {
+    const formData = new FormData();
+    
+    // Add each file to the form data
+    files.forEach(file => {
+      formData.append('files', file);
+    });
+    
+    return this.requestWithFile<ApiResponse<FilePreviewResponse>>('/transactions/upload/preview', formData);
+  }
+
+  async confirmUpload(confirmation: UploadConfirmation): Promise<ApiResponse<UploadSummaryResponse>> {
+    return this.request<ApiResponse<UploadSummaryResponse>>('/transactions/upload/confirm', {
+      method: 'POST',
+      body: JSON.stringify(confirmation),
+    });
   }
 
   // Budget API

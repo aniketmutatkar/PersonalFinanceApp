@@ -7,6 +7,7 @@ from typing import List, Optional, Dict
 from datetime import date, datetime, timedelta
 import pandas as pd
 import uuid
+import time
 
 from src.api.dependencies import (
     get_transaction_repository, 
@@ -26,6 +27,7 @@ from src.api.schemas.upload import (
     CategoryUpdate, 
     UploadConfirmation
 )
+
 from src.api.utils.pagination import PaginationParams, PagedResponse
 from src.api.utils.error_handling import APIError
 from src.api.utils.response import ApiResponse
@@ -61,25 +63,12 @@ async def get_transactions(
     - page_size: Number of items per page
     """
     try:
-        # Add debug logging
-        print(f"Getting transactions with filters: category={category}, start_date={start_date}, end_date={end_date}, month={month}")
-        
         transactions_df = reporting_service.get_transactions_report(
             category=category,
             start_date=start_date,
             end_date=end_date,
             month_str=month  # Pass month to reporting service
         )
-        
-        # Add more debug logging
-        if transactions_df is None:
-            print("Reporting service returned None")
-        elif transactions_df.empty:
-            print("Reporting service returned empty DataFrame")
-        else:
-            print(f"Reporting service returned {len(transactions_df)} transactions")
-            print(f"Columns: {transactions_df.columns.tolist()}")
-            print(f"First few rows: {transactions_df.head().to_dict('records')}")
         
         # Create pagination object manually
         pagination = type('PaginationParams', (), {
@@ -121,39 +110,6 @@ async def get_transactions(
     except Exception as e:
         raise APIError(status_code=500, detail=str(e))
 
-@router.get("/{transaction_id}", response_model=TransactionResponse)
-async def get_transaction(
-    transaction_id: int,
-    transaction_repo: TransactionRepository = Depends(get_transaction_repository)
-):
-    """
-    Get a specific transaction by ID
-    """
-    try:
-        transaction = transaction_repo.find_by_id(transaction_id)
-        
-        if not transaction:
-            raise APIError(
-                status_code=404, 
-                detail=f"Transaction with ID {transaction_id} not found",
-                error_code="TRANSACTION_NOT_FOUND"
-            )
-        
-        return TransactionResponse(
-            id=transaction.id,
-            date=transaction.date,
-            description=transaction.description,
-            amount=transaction.amount,
-            category=transaction.category,
-            source=transaction.source,
-            transaction_hash=transaction.transaction_hash,
-            month_str=transaction.month_str
-        )
-    except APIError:
-        raise
-    except Exception as e:
-        raise APIError(status_code=500, detail=str(e))
-
 @router.post("/upload/preview", response_model=ApiResponse[FilePreviewResponse])
 async def preview_upload(
     files: List[UploadFile] = File(...),
@@ -168,15 +124,29 @@ async def preview_upload(
     files_info = {}
     
     for file in files:
-        # Create a temporary file to store the upload
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
-            content = await file.read()
-            temp_file.write(content)
-            temp_file_path = temp_file.name
+        # Validate and ensure we have a proper filename
+        original_filename = getattr(file, 'filename', None)
+        if not original_filename or not isinstance(original_filename, str):
+            original_filename = f"uploaded_file_{int(time.time())}.csv"
+        
+        # Ensure the filename has a .csv extension for proper processing
+        if not original_filename.lower().endswith('.csv'):
+            original_filename += '.csv'
+        
+        # Create a temporary file with proper extension
+        file_extension = os.path.splitext(original_filename)[1] or '.csv'
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
+            try:
+                content = await file.read()
+                temp_file.write(content)
+                temp_file_path = temp_file.name
+            except Exception as e:
+                continue
         
         try:
-            # Process the file
-            df = import_service.process_bank_file(temp_file_path, original_filename=file.filename)
+            # Process the file with the original filename for bank detection
+            df = import_service.process_bank_file(temp_file_path, original_filename=original_filename)
             
             if df is not None and not df.empty:
                 # Add temporary IDs to each transaction
@@ -184,28 +154,53 @@ async def preview_upload(
                 for _, row in df.iterrows():
                     tx_dict = row.to_dict()
                     tx_dict['temp_id'] = str(uuid.uuid4())
-                    tx_dict['original_filename'] = file.filename
+                    tx_dict['original_filename'] = original_filename
                     transactions.append(tx_dict)
                 
                 all_transactions.extend(transactions)
-                files_info[file.filename] = len(transactions)
+                files_info[original_filename] = len(transactions)
                 
                 # Extract Misc transactions for review
                 for tx in transactions:
-                    if tx['Category'] == 'Misc':
-                        # Create preview object
-                        preview = TransactionPreview(
-                            temp_id=tx['temp_id'],
-                            date=tx['Date'],
-                            description=tx['Description'],
-                            amount=float(tx['Amount']),
-                            category=tx['Category'],
-                            source=tx['source'],
-                            suggested_categories=_suggest_categories(tx['Description'], import_service)
-                        )
-                        all_misc_transactions.append(preview)
+                    if tx.get('Category') == 'Misc':
+                        try:
+                            # Convert date string to date object
+                            if isinstance(tx['Date'], str):
+                                tx_date = pd.to_datetime(tx['Date']).date()
+                            else:
+                                tx_date = tx['Date']
+                            
+                            # Convert amount to Decimal
+                            tx_amount = Decimal(str(tx['Amount']))
+                            
+                            # Get category suggestions
+                            suggestions = _suggest_categories(str(tx['Description']), import_service)
+                            
+                            # Create preview object
+                            preview = TransactionPreview(
+                                temp_id=tx['temp_id'],
+                                date=tx_date,
+                                description=str(tx['Description']),
+                                amount=tx_amount,
+                                category=str(tx['Category']),
+                                source=str(tx['source']),
+                                suggested_categories=suggestions
+                            )
+                            all_misc_transactions.append(preview)
+                            
+                        except Exception:
+                            # Skip transactions that can't be processed
+                            continue
+                            
+        except Exception:
+            # Skip files that can't be processed
+            continue
         finally:
-            os.unlink(temp_file_path)
+            # Clean up the temporary file
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass
     
     # Store session data
     upload_sessions[session_id] = {
@@ -214,7 +209,7 @@ async def preview_upload(
         'files_info': files_info
     }
     
-    # Clean up old sessions (older than 1 hour)
+    # Clean up old sessions
     _cleanup_old_sessions()
     
     return ApiResponse.success(
@@ -223,7 +218,7 @@ async def preview_upload(
             total_transactions=len(all_transactions),
             misc_transactions=all_misc_transactions,
             requires_review=len(all_misc_transactions) > 0,
-            files_processed=len(files)
+            files_processed=len(files_info)
         )
     )
 
@@ -287,7 +282,7 @@ async def confirm_upload(
     )
 
 # Helper functions
-def _suggest_categories(description: str, import_service: ImportService) -> List[str]:
+def _suggest_categories(description: str, import_service) -> List[str]:
     """Suggest possible categories based on description"""
     suggestions = []
     description_lower = description.lower()
@@ -300,8 +295,9 @@ def _suggest_categories(description: str, import_service: ImportService) -> List
                     suggestions.append(name)
                     break
     
-    # Return top 3 suggestions
-    return suggestions[:3]
+    # Return top 3 suggestions, excluding Misc and Payment
+    filtered_suggestions = [s for s in suggestions if s not in ['Misc', 'Payment']]
+    return filtered_suggestions[:3]
 
 def _cleanup_old_sessions():
     """Remove sessions older than 1 hour"""
@@ -415,5 +411,38 @@ async def create_transaction(
                 error_code="DUPLICATE_TRANSACTION"
             )
         raise APIError(status_code=400, detail=str(e))
+    except Exception as e:
+        raise APIError(status_code=500, detail=str(e))
+
+@router.get("/{transaction_id}", response_model=TransactionResponse)
+async def get_transaction(
+    transaction_id: int,
+    transaction_repo: TransactionRepository = Depends(get_transaction_repository)
+):
+    """
+    Get a specific transaction by ID
+    """
+    try:
+        transaction = transaction_repo.find_by_id(transaction_id)
+        
+        if not transaction:
+            raise APIError(
+                status_code=404, 
+                detail=f"Transaction with ID {transaction_id} not found",
+                error_code="TRANSACTION_NOT_FOUND"
+            )
+        
+        return TransactionResponse(
+            id=transaction.id,
+            date=transaction.date,
+            description=transaction.description,
+            amount=transaction.amount,
+            category=transaction.category,
+            source=transaction.source,
+            transaction_hash=transaction.transaction_hash,
+            month_str=transaction.month_str
+        )
+    except APIError:
+        raise
     except Exception as e:
         raise APIError(status_code=500, detail=str(e))

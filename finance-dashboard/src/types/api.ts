@@ -136,3 +136,45 @@ export interface BudgetAnalysisResponse {
   total_actual: number;
   total_variance: number;
 }
+
+// Upload Types
+export interface TransactionPreview {
+  temp_id: string;
+  date: string;
+  description: string;
+  amount: number;
+  category: string;
+  source: string;
+  suggested_categories: string[];
+}
+
+export interface FilePreviewResponse {
+  session_id: string;
+  total_transactions: number;
+  misc_transactions: TransactionPreview[];
+  requires_review: boolean;
+  files_processed: number;
+}
+
+export interface CategoryUpdate {
+  temp_id: string;
+  new_category: string;
+}
+
+export interface UploadConfirmation {
+  session_id: string;
+  category_updates: CategoryUpdate[];
+}
+
+export interface UploadSummaryResponse {
+  files_processed: number;
+  total_transactions: number;
+  transactions_by_file: Record<string, number>;
+  message: string;
+}
+
+export interface UploadValidationError {
+  file: string;
+  error: string;
+  type: 'size' | 'format' | 'content';
+}

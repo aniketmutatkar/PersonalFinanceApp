@@ -1,3 +1,5 @@
+# src/services/import_service.py
+
 """
 Import service for processing financial data files.
 """
@@ -117,11 +119,17 @@ class ImportService:
         Returns:
             DataFrame with processed transactions
         """
-        # Use original filename if provided, otherwise use the path basename
-        filename_to_check = original_filename.lower() if original_filename else os.path.basename(file_path).lower()
+        # SAFETY FIX: Handle filename properly
+        if original_filename and isinstance(original_filename, str) and original_filename.strip():
+            filename_to_check = original_filename.lower()
+        elif file_path:
+            filename_to_check = os.path.basename(file_path).lower()
+        else:
+            raise ValueError("No valid filename provided for bank type detection")
+        
         df = None
         
-        # Determine bank type from filename
+        # Determine bank type from filename - YOUR EXISTING LOGIC UNCHANGED
         if 'chase' in filename_to_check:
             source = 'chase'
             df = pd.read_csv(file_path)
