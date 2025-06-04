@@ -17,7 +17,9 @@ from src.api.dependencies import (
 )
 from src.api.schemas.transaction import (
     TransactionResponse, 
-    TransactionCreate, 
+    TransactionCreate,
+    TransactionUpdate,        # NEW
+    TransactionUpdateResponse, # NEW
     FileUploadResponse,
     BulkFileUploadResponse
 )
@@ -25,7 +27,9 @@ from src.api.schemas.upload import (
     TransactionPreview, 
     FilePreviewResponse, 
     CategoryUpdate, 
-    UploadConfirmation
+    UploadConfirmation,
+    ProcessedTransaction,
+    EnhancedUploadSummaryResponse
 )
 
 from src.api.utils.pagination import PaginationParams, PagedResponse
@@ -266,18 +270,104 @@ async def get_transaction(
     except Exception as e:
         raise APIError(status_code=500, detail=str(e))
 
-@router.post("/upload/preview", response_model=ApiResponse[FilePreviewResponse])
-async def preview_upload(
-    files: List[UploadFile] = File(...),
+@router.put("/{transaction_id}", response_model=TransactionUpdateResponse)
+async def update_transaction(
+    transaction_id: int,
+    updates: TransactionUpdate,
+    transaction_repo: TransactionRepository = Depends(get_transaction_repository),
+    monthly_summary_repo: MonthlySummaryRepository = Depends(get_monthly_summary_repository),
     import_service: ImportService = Depends(get_import_service)
 ):
     """
+    Update an existing transaction
+    """
+    try:
+        # Convert updates to dict, excluding None values
+        update_dict = {k: v for k, v in updates.dict().items() if v is not None}
+        
+        if not update_dict:
+            raise APIError(
+                status_code=400,
+                detail="No valid updates provided",
+                error_code="NO_UPDATES"
+            )
+        
+        # Update the transaction
+        updated_transaction, affected_months = transaction_repo.update(transaction_id, update_dict)
+        
+        # Recalculate monthly summaries for affected months
+        monthly_summaries_affected = []
+        if affected_months:
+            # Create affected_data structure for monthly summary update
+            affected_data = {}
+            for month_str in affected_months:
+                # Get all categories that might be affected in this month
+                # (We could be more precise, but for safety, let's recalculate all categories for affected months)
+                affected_data[month_str] = set(import_service.categories.keys())
+            
+            # Update monthly summaries
+            monthly_summary_repo.update_from_transactions(affected_data, import_service.categories)
+            
+            # Convert month strings to display format for response
+            for month_str in affected_months:
+                try:
+                    # Parse YYYY-MM format to readable format
+                    month_date = pd.to_datetime(month_str + '-01')
+                    month_year = month_date.strftime('%B %Y')
+                    monthly_summaries_affected.append(month_year)
+                except:
+                    monthly_summaries_affected.append(month_str)
+        
+        # Return updated transaction
+        return TransactionUpdateResponse(
+            updated_transaction=TransactionResponse(
+                id=updated_transaction.id,
+                date=updated_transaction.date,
+                description=updated_transaction.description,
+                amount=updated_transaction.amount,
+                category=updated_transaction.category,
+                source=updated_transaction.source,
+                transaction_hash=updated_transaction.transaction_hash,
+                month_str=updated_transaction.month_str
+            ),
+            monthly_summaries_affected=monthly_summaries_affected
+        )
+        
+    except ValueError as e:
+        if "not found" in str(e).lower():
+            raise APIError(
+                status_code=404,
+                detail=str(e),
+                error_code="TRANSACTION_NOT_FOUND"
+            )
+        elif "duplicate" in str(e).lower():
+            raise APIError(
+                status_code=409,
+                detail=str(e),
+                error_code="DUPLICATE_TRANSACTION"
+            )
+        else:
+            raise APIError(status_code=400, detail=str(e))
+    except Exception as e:
+        raise APIError(status_code=500, detail=str(e))
+
+@router.post("/upload/preview", response_model=ApiResponse[FilePreviewResponse])
+async def preview_upload(
+    files: List[UploadFile] = File(...),
+    import_service: ImportService = Depends(get_import_service),
+    transaction_repo: TransactionRepository = Depends(get_transaction_repository)  # NEW: Add this dependency
+):
+    """
     Preview uploaded files and identify transactions needing review
+    Updated to check for duplicates during preview stage
     """
     session_id = str(uuid.uuid4())
     all_transactions = []
     all_misc_transactions = []
     files_info = {}
+    
+    # NEW: Get existing transaction hashes to check for duplicates
+    existing_hashes = transaction_repo.get_existing_hashes()
     
     for file in files:
         # Validate and ensure we have a proper filename
@@ -311,14 +401,19 @@ async def preview_upload(
                     tx_dict = row.to_dict()
                     tx_dict['temp_id'] = str(uuid.uuid4())
                     tx_dict['original_filename'] = original_filename
+                    
+                    # NEW: Check if this transaction is a duplicate
+                    tx_hash = str(tx_dict['transaction_hash'])
+                    tx_dict['is_duplicate'] = tx_hash in existing_hashes
+                    
                     transactions.append(tx_dict)
                 
                 all_transactions.extend(transactions)
                 files_info[original_filename] = len(transactions)
                 
-                # Extract Misc transactions for review
+                # NEW: Extract Misc transactions for review, but ONLY non-duplicates
                 for tx in transactions:
-                    if tx.get('Category') == 'Misc':
+                    if tx.get('Category') == 'Misc' and not tx.get('is_duplicate', False):  # NEW: Skip duplicates
                         try:
                             # Convert date string to date object
                             if isinstance(tx['Date'], str):
@@ -372,13 +467,13 @@ async def preview_upload(
         data=FilePreviewResponse(
             session_id=session_id,
             total_transactions=len(all_transactions),
-            misc_transactions=all_misc_transactions,
+            misc_transactions=all_misc_transactions,  # Now only contains non-duplicate Misc transactions
             requires_review=len(all_misc_transactions) > 0,
             files_processed=len(files_info)
         )
     )
 
-@router.post("/upload/confirm", response_model=ApiResponse[BulkFileUploadResponse])
+@router.post("/upload/confirm", response_model=ApiResponse[EnhancedUploadSummaryResponse])
 async def confirm_upload(
     confirmation: UploadConfirmation,
     import_service: ImportService = Depends(get_import_service),
@@ -387,7 +482,7 @@ async def confirm_upload(
 ):
     """
     Confirm and save uploaded transactions with reviewed categories
-    Updated for proper DATE handling
+    Updated for proper DATE handling and transaction details
     """
     # Get session data
     session_data = upload_sessions.get(confirmation.session_id)
@@ -402,9 +497,14 @@ async def confirm_upload(
     category_map = {cu.temp_id: cu.new_category for cu in confirmation.category_updates}
     
     transactions_to_save = []
+    processed_transactions = []  # NEW: Track all processed transactions
+    
     for tx_data in session_data['transactions']:
+        # Track if this transaction was manually reviewed
+        was_reviewed = tx_data['temp_id'] in category_map
+        
         # Update category if it was reviewed
-        if tx_data['temp_id'] in category_map:
+        if was_reviewed:
             tx_data['Category'] = category_map[tx_data['temp_id']]
         
         # Parse date properly
@@ -412,32 +512,63 @@ async def confirm_upload(
         
         # Create Transaction object
         transaction = Transaction(
-            date=tx_date,  # Now a proper date object
+            date=tx_date,
             description=str(tx_data['Description']),
             amount=Decimal(str(tx_data['Amount'])),
             category=str(tx_data['Category']),
             source=str(tx_data['source']),
             transaction_hash=str(tx_data['transaction_hash']),
-            month_str=tx_date.strftime('%Y-%m')  # Calculate month_str from date
+            month_str=tx_date.strftime('%Y-%m')
         )
         transactions_to_save.append(transaction)
+        
+        # NEW: Create processed transaction record
+        processed_tx = ProcessedTransaction(
+            date=tx_date,
+            description=str(tx_data['Description']),
+            amount=Decimal(str(tx_data['Amount'])),
+            category=str(tx_data['Category']),
+            source=str(tx_data['source']),
+            original_filename=str(tx_data.get('original_filename', 'unknown')),
+            was_duplicate=False,  # Will be updated based on save results
+            was_reviewed=was_reviewed
+        )
+        processed_transactions.append(processed_tx)
     
-    # Save all transactions
-    records_added, affected_data = transaction_repo.save_many(transactions_to_save)
+    # Save all transactions (now returns duplicate hashes)
+    records_added, affected_data, duplicate_hashes = transaction_repo.save_many(transactions_to_save)
+    
+    # NEW: Mark duplicates in processed transactions
+    for processed_tx, original_tx in zip(processed_transactions, transactions_to_save):
+        if original_tx.transaction_hash in duplicate_hashes:
+            processed_tx.was_duplicate = True
     
     # Update monthly summaries
     if affected_data:
         monthly_summary_repo.update_from_transactions(affected_data, import_service.categories)
     
+    # Calculate totals
+    total_transactions = len(processed_transactions)
+    duplicate_count = len(duplicate_hashes)
+    
+    # Create enhanced response message
+    if duplicate_count > 0:
+        message = f"Successfully processed {total_transactions} transactions ({records_added} new, {duplicate_count} duplicates)"
+    else:
+        message = f"Successfully saved {records_added} new transactions"
+    
     # Clean up session
     del upload_sessions[confirmation.session_id]
     
     return ApiResponse.success(
-        data=BulkFileUploadResponse(
+        data=EnhancedUploadSummaryResponse(
             files_processed=len(session_data['files_info']),
-            total_transactions=records_added,
+            total_transactions=total_transactions,
+            new_transactions=records_added,
+            duplicate_transactions=duplicate_count,
             transactions_by_file=session_data['files_info'],
-            message=f"Successfully saved {records_added} new transactions"
+            message=message,
+            processed_transactions=processed_transactions
         )
     )
 

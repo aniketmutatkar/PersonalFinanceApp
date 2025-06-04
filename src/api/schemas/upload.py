@@ -79,3 +79,54 @@ class UploadConfirmation(BaseModel):
                 ]
             }
         }
+
+class ProcessedTransaction(BaseModel):
+    """Transaction with processing metadata"""
+    date: date
+    description: str
+    amount: Decimal
+    category: str
+    source: str
+    original_filename: str
+    was_duplicate: bool = False
+    was_reviewed: bool = False  # True if manually categorized during review
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "date": "2023-06-15",
+                "description": "WHOLE FOODS MARKET",
+                "amount": 87.42,
+                "category": "Groceries",
+                "source": "chase",
+                "original_filename": "chase_june.csv",
+                "was_duplicate": False,
+                "was_reviewed": False
+            }
+        }
+
+class EnhancedUploadSummaryResponse(BaseModel):
+    """Enhanced upload summary with transaction details"""
+    files_processed: int
+    total_transactions: int
+    new_transactions: int
+    duplicate_transactions: int
+    transactions_by_file: Dict[str, int]
+    message: str
+    processed_transactions: List[ProcessedTransaction] = Field(default_factory=list)
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "files_processed": 2,
+                "total_transactions": 50,
+                "new_transactions": 45,
+                "duplicate_transactions": 5,
+                "transactions_by_file": {
+                    "chase_june.csv": 30,
+                    "wells_june.csv": 20
+                },
+                "message": "Successfully processed 50 transactions (45 new, 5 duplicates)",
+                "processed_transactions": []
+            }
+        }

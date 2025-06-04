@@ -119,6 +119,19 @@ export interface Transaction {
   avg_amount?: number; 
 }
 
+export interface TransactionUpdate {
+  date?: string;
+  description?: string;
+  amount?: number;
+  category?: string;
+  source?: string;
+}
+
+export interface TransactionUpdateResponse {
+  updated_transaction: Transaction;
+  monthly_summaries_affected: string[];
+}
+
 export interface TransactionListResponse {
   transactions: Transaction[];
   total: number;
@@ -173,8 +186,11 @@ export interface UploadConfirmation {
 export interface UploadSummaryResponse {
   files_processed: number;
   total_transactions: number;
+  new_transactions: number;           // NEW
+  duplicate_transactions: number;     // NEW
   transactions_by_file: Record<string, number>;
   message: string;
+  processed_transactions: ProcessedTransaction[];  // NEW
 }
 
 export interface UploadValidationError {
@@ -187,4 +203,15 @@ export interface UploadValidationError {
 export interface SortConfig {
   field: 'date' | 'description' | 'category' | 'amount' | 'source';
   direction: 'asc' | 'desc';
+}
+
+export interface ProcessedTransaction {
+  date: string;
+  description: string;
+  amount: number;
+  category: string;
+  source: string;
+  original_filename: string;
+  was_duplicate: boolean;
+  was_reviewed: boolean;
 }

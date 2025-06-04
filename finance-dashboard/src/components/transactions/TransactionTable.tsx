@@ -1,7 +1,8 @@
 // src/components/transactions/TransactionTable.tsx
-import React from 'react';
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Edit3 } from 'lucide-react';
 import { Transaction } from '../../types/api';
+import TransactionEditModal from './TransactionEditModal';
 
 interface TransactionTableProps {
   transactions: Transaction[];
@@ -13,6 +14,7 @@ interface TransactionTableProps {
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onSortChange: (field: string, direction: string) => void;
+  showEditButton?: boolean; // NEW: Make edit functionality optional
 }
 
 function formatCurrency(amount: number): string {
@@ -75,96 +77,116 @@ export default function TransactionTable({
   sortDirection = 'desc',
   onPageChange, 
   onPageSizeChange,
-  onSortChange
+  onSortChange,
+  showEditButton = true // NEW: Default to true
 }: TransactionTableProps) {
+  // NEW: Add state for edit modal
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+
   const totalPages = Math.ceil(totalTransactions / pageSize);
   const startIndex = (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalTransactions);
 
   return (
-    <div>
-      {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-gray-700">
-            <tr>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">
-                <button
-                  onClick={() => handleSort('date', sortField, sortDirection, onSortChange)}
-                  className="group flex items-center gap-1 hover:text-white transition-colors"
-                >
-                  Date
-                  {getSortIcon('date', sortField, sortDirection)}
-                </button>
-              </th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">
-                <button
-                  onClick={() => handleSort('description', sortField, sortDirection, onSortChange)}
-                  className="group flex items-center gap-1 hover:text-white transition-colors"
-                >
-                  Description
-                  {getSortIcon('description', sortField, sortDirection)}
-                </button>
-              </th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">
-                <button
-                  onClick={() => handleSort('category', sortField, sortDirection, onSortChange)}
-                  className="group flex items-center gap-1 hover:text-white transition-colors"
-                >
-                  Category
-                  {getSortIcon('category', sortField, sortDirection)}
-                </button>
-              </th>
-              <th className="px-4 py-3 text-right text-sm font-medium text-gray-300">
-                <button
-                  onClick={() => handleSort('amount', sortField, sortDirection, onSortChange)}
-                  className="group flex items-center gap-1 hover:text-white transition-colors ml-auto"
-                >
-                  Amount
-                  {getSortIcon('amount', sortField, sortDirection)}
-                </button>
-              </th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">
-                <button
-                  onClick={() => handleSort('source', sortField, sortDirection, onSortChange)}
-                  className="group flex items-center gap-1 hover:text-white transition-colors"
-                >
-                  Source
-                  {getSortIcon('source', sortField, sortDirection)}
-                </button>
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-700">
-            {/* existing tbody content stays the same */}
-            {transactions.map((transaction) => (
-              <tr key={transaction.id} className="hover:bg-gray-700/50">
-                <td className="px-4 py-3 text-sm text-gray-300">
-                  {formatDate(transaction.date)}
-                </td>
-                <td className="px-4 py-3 text-sm text-white font-medium">
-                  <div className="max-w-xs truncate" title={transaction.description}>
-                    {transaction.description}
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-sm">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-600/20 text-blue-400">
-                    {transaction.category}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-sm text-right font-mono">
-                  <span className={transaction.amount > 0 ? 'text-red-400' : 'text-green-400'}>
-                    {transaction.amount > 0 ? '+' : '-'}{formatCurrency(transaction.amount)}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-400 capitalize">
-                  {transaction.source}
-                </td>
+      <div>
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-700">
+              <tr>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 w-24">
+                  <button
+                    onClick={() => handleSort('date', sortField, sortDirection, onSortChange)}
+                    className="group flex items-center gap-1 hover:text-white transition-colors"
+                  >
+                    Date
+                    {getSortIcon('date', sortField, sortDirection)}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 w-2/5">
+                  <button
+                    onClick={() => handleSort('description', sortField, sortDirection, onSortChange)}
+                    className="group flex items-center gap-1 hover:text-white transition-colors"
+                  >
+                    Description
+                    {getSortIcon('description', sortField, sortDirection)}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 w-28">
+                  <button
+                    onClick={() => handleSort('category', sortField, sortDirection, onSortChange)}
+                    className="group flex items-center gap-1 hover:text-white transition-colors"
+                  >
+                    Category
+                    {getSortIcon('category', sortField, sortDirection)}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-gray-300 w-24">
+                  <button
+                    onClick={() => handleSort('amount', sortField, sortDirection, onSortChange)}
+                    className="group flex items-center gap-1 hover:text-white transition-colors ml-auto"
+                  >
+                    Amount
+                    {getSortIcon('amount', sortField, sortDirection)}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 w-20">
+                  <button
+                    onClick={() => handleSort('source', sortField, sortDirection, onSortChange)}
+                    className="group flex items-center gap-1 hover:text-white transition-colors"
+                  >
+                    Source
+                    {getSortIcon('source', sortField, sortDirection)}
+                  </button>
+                </th>
+                {showEditButton && (
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-300 w-16">
+                    Actions
+                  </th>
+                )}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {transactions.map((transaction) => (
+                <tr key={transaction.id} className="hover:bg-gray-700/50">
+                  <td className="px-4 py-3 text-sm text-gray-300">
+                    {formatDate(transaction.date)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-white font-medium">
+                    <div className="max-w-full truncate" title={transaction.description}>
+                      {transaction.description}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-600/20 text-blue-400">
+                      {transaction.category}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right font-mono">
+                    <span className={transaction.amount > 0 ? 'text-red-400' : 'text-green-400'}>
+                      {transaction.amount > 0 ? '+' : '-'}{formatCurrency(transaction.amount)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-400 capitalize">
+                    {transaction.source}
+                  </td>
+                  {/* NEW: Actions column */}
+                  {showEditButton && (
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => setEditingTransaction(transaction)}
+                        className="text-gray-400 hover:text-blue-400 transition-colors p-1"
+                        title="Edit transaction"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
       {/* Pagination */}
       <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-4 border-t border-gray-700 gap-4">
@@ -231,6 +253,19 @@ export default function TransactionTable({
           </button>
         </div>
       </div>
+
+      {/* NEW: Edit Modal */}
+      {editingTransaction && (
+        <TransactionEditModal
+          transaction={editingTransaction}
+          isOpen={!!editingTransaction}
+          onClose={() => setEditingTransaction(null)}
+          onSuccess={() => {
+            // Transaction table will automatically update due to query invalidation
+            console.log('Transaction updated successfully');
+          }}
+        />
+      )}
     </div>
   );
 }

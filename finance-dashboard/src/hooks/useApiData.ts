@@ -1,12 +1,14 @@
 // src/hooks/useApiData.ts
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 import { 
   FinancialOverview, 
   MonthlySummaryListResponse, 
   Transaction, 
   PagedResponse, 
-  BudgetAnalysisResponse 
+  BudgetAnalysisResponse,
+  TransactionUpdate
 } from '../types/api';
 
 // Query keys for consistent caching
@@ -145,5 +147,24 @@ export function useSpendingPatterns(options?: UseQueryOptions<any>) {
     queryFn: () => api.getSpendingPatterns(),
     staleTime: 10 * 60 * 1000,
     ...options,
+  });
+}
+
+export function useUpdateTransaction() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ transactionId, updates }: { transactionId: number; updates: TransactionUpdate }) => {
+      return api.updateTransaction(transactionId, updates);
+    },
+    onSuccess: () => {
+      // Invalidate relevant queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['monthly-summaries'] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.financialOverview });
+    },
+    onError: (error) => {
+      console.error('Transaction update failed:', error);
+    },
   });
 }

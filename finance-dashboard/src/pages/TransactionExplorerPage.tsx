@@ -243,44 +243,15 @@ export default function TransactionExplorerPage() {
           </p>
         </div>
         
-        <div className="flex items-center gap-3">
-          {hasActiveFilters && (
-            <button
-              onClick={handleClearFilters}
-              className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-600 rounded-lg hover:border-gray-500 transition-colors"
-            >
-              Clear Filters
-            </button>
-          )}
-          
-          <button
-            onClick={handleExport}
-            disabled={!transactionsData?.items?.length}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Export
-          </button>
-        </div>
+        <button
+          onClick={handleExport}
+          disabled={!transactionsData?.items?.length}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          <Download className="w-4 h-4" />
+          Export
+        </button>
       </div>
-
-      {/* Active Filter Summary */}
-      {hasActiveFilters && (
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-          <div className="flex items-center gap-2 text-sm">
-            <Filter className="w-4 h-4 text-blue-400" />
-            <span className="text-gray-300">Active filters:</span>
-            <span className="text-white">{getFilterSummary()}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Filters */}
-      <TransactionFilters
-        filters={filters}
-        onFiltersChange={handleFilterChange}
-        categories={categoriesData?.categories || []}
-      />
 
       {/* Stats */}
       {transactionsData && (
@@ -294,45 +265,83 @@ export default function TransactionExplorerPage() {
         />
       )}
 
-      {/* Results */}
-      <div className="bg-gray-800 rounded-lg border border-gray-700 flex-1">
-        {transactionsLoading ? (
-          <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-            <p className="text-gray-400 mt-2">Loading transactions...</p>
-          </div>
-        ) : transactionsData && transactionsData.items.length > 0 ? (
-          <TransactionTable
-            transactions={transactionsData.items}
-            totalTransactions={transactionsData.total}
-            currentPage={filters.page}
-            pageSize={filters.pageSize}
-            sortField={filters.sortField}           // ADD THIS
-            sortDirection={filters.sortDirection}   // ADD THIS
-            onPageChange={(page: number) => handleFilterChange({ page })}
-            onPageSizeChange={(pageSize: number) => handleFilterChange({ pageSize, page: 1 })}
-            onSortChange={handleSortChange}         // ADD THIS
-          />
-        ) : (
-          <div className="p-8 text-center">
-            <Search className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-300 mb-2">No transactions found</h3>
-            <p className="text-gray-500">
-              {hasActiveFilters 
-                ? 'Try adjusting your filters to see more results.'
-                : 'No transactions available.'
-              }
-            </p>
+      {/* Main Content Area - Filters + Table */}
+      <div className="flex-1 flex gap-6">
+        {/* Left Sidebar for Filters */}
+        <div className="w-80 flex-shrink-0 bg-gray-800 border border-gray-700 rounded-lg h-fit">
+          <div className="p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <Filter className="w-5 h-5 text-blue-400" />
+              <h2 className="font-medium text-white">Filters</h2>
+              {(filters.categories.length > 0 || filters.description || filters.month) && (
+                <span className="text-xs bg-blue-600 text-white px-2 py-1 rounded-full ml-auto">
+                  {filters.categories.length + (filters.description ? 1 : 0) + (filters.month ? 1 : 0)}
+                </span>
+              )}
+            </div>
+
+            {/* Use the existing TransactionFilters component with sidebar variant */}
+            <TransactionFilters
+              filters={filters}
+              onFiltersChange={handleFilterChange}
+              categories={categoriesData?.categories || []}
+              variant="sidebar"
+            />
+
+            {/* Clear All Button */}
             {hasActiveFilters && (
-              <button
-                onClick={handleClearFilters}
-                className="mt-4 text-blue-400 hover:text-blue-300"
-              >
-                Clear all filters
-              </button>
+              <div className="mt-6">
+                <button
+                  onClick={handleClearFilters}
+                  className="w-full px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-600 rounded-lg hover:border-gray-500 transition-colors"
+                >
+                  Clear All Filters
+                </button>
+              </div>
             )}
           </div>
-        )}
+        </div>
+
+        {/* Results Table */}
+        <div className="flex-1 bg-gray-800 rounded-lg border border-gray-700">
+          {transactionsLoading ? (
+            <div className="p-8 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+              <p className="text-gray-400 mt-2">Loading transactions...</p>
+            </div>
+          ) : transactionsData && transactionsData.items.length > 0 ? (
+            <TransactionTable
+              transactions={transactionsData.items}
+              totalTransactions={transactionsData.total}
+              currentPage={filters.page}
+              pageSize={filters.pageSize}
+              sortField={filters.sortField}
+              sortDirection={filters.sortDirection}
+              onPageChange={(page: number) => handleFilterChange({ page })}
+              onPageSizeChange={(pageSize: number) => handleFilterChange({ pageSize, page: 1 })}
+              onSortChange={handleSortChange}
+            />
+          ) : (
+            <div className="p-8 text-center">
+              <Search className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-300 mb-2">No transactions found</h3>
+              <p className="text-gray-500">
+                {hasActiveFilters 
+                  ? 'Try adjusting your filters to see more results.'
+                  : 'No transactions available.'
+                }
+              </p>
+              {hasActiveFilters && (
+                <button
+                  onClick={handleClearFilters}
+                  className="mt-4 text-blue-400 hover:text-blue-300"
+                >
+                  Clear all filters
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

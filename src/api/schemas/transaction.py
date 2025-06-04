@@ -2,12 +2,12 @@
 
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
-from datetime import date
+from datetime import date as DateType
 from decimal import Decimal
 
 # Base Transaction model with common fields
 class TransactionBase(BaseModel):
-    date: date
+    date: DateType
     description: str
     amount: Decimal
     category: str
@@ -16,6 +16,25 @@ class TransactionBase(BaseModel):
 # Model for creating a new transaction manually
 class TransactionCreate(TransactionBase):
     pass
+
+class TransactionUpdate(BaseModel):
+    """Model for updating an existing transaction"""
+    date: Optional[DateType] = None
+    description: Optional[str] = None
+    amount: Optional[Decimal] = None
+    category: Optional[str] = None
+    source: Optional[str] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "date": "2023-06-15",
+                "description": "WHOLE FOODS MARKET - CORRECTED",
+                "amount": 92.50,
+                "category": "Food",
+                "source": "chase"
+            }
+        }
 
 # Model for transaction responses
 class TransactionResponse(TransactionBase):
@@ -59,6 +78,28 @@ class TransactionListResponse(BaseModel):
                     }
                 ],
                 "total": 1
+            }
+        }
+
+class TransactionUpdateResponse(BaseModel):
+    """Response after updating a transaction"""
+    updated_transaction: TransactionResponse
+    monthly_summaries_affected: List[str] = Field(default_factory=list, description="List of month_year values that were recalculated")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "updated_transaction": {
+                    "id": 1,
+                    "date": "2023-06-15",
+                    "description": "WHOLE FOODS MARKET - CORRECTED",
+                    "amount": 92.50,
+                    "category": "Food",
+                    "source": "chase",
+                    "transaction_hash": "new_hash_value",
+                    "month_str": "2023-06"
+                },
+                "monthly_summaries_affected": ["June 2023"]
             }
         }
 

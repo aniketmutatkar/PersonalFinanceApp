@@ -4,6 +4,8 @@ import {
   MonthlySummaryListResponse,
   MonthlySummary,
   Transaction,
+  TransactionUpdate,
+  TransactionUpdateResponse,
   PagedResponse,
   BudgetAnalysisResponse,
   TransactionListResponse,
@@ -144,6 +146,13 @@ export class FinanceTrackerApi {
 
   async getTransaction(transactionId: number): Promise<Transaction> {
     return this.request<Transaction>(`/transactions/${transactionId}`);
+  }
+
+  async updateTransaction(transactionId: number, updates: TransactionUpdate): Promise<TransactionUpdateResponse> {
+    return this.request<TransactionUpdateResponse>(`/transactions/${transactionId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
   }
 
   async uploadFilesPreview(files: File[]): Promise<ApiResponse<FilePreviewResponse>> {

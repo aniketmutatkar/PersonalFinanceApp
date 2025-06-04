@@ -45,6 +45,11 @@ export default function UploadView() {
           confirmUpload({
             session_id: response.data.session_id,
             category_updates: []
+          }, {
+            // ✅ ADD THIS SUCCESS CALLBACK
+            onSuccess: () => {
+              setCurrentStep('summary');
+            }
           });
         }
       }
