@@ -252,3 +252,64 @@ export interface SpendingPatternsResponse {
     months_analyzed: number;
   };
 }
+
+// Investment Analytics Types (ADD TO EXISTING src/types/api.ts file)
+
+export interface InvestmentAccount {
+  name: string;
+  total_deposits: number;
+  monthly_average: number;
+  transaction_count: number;
+  last_deposit_date?: string;
+  consistency_score: number; // 0-100, higher = more consistent
+}
+
+export interface InvestmentOverviewData {
+  total_invested: number;
+  monthly_average: number;
+  active_accounts: number;
+  investment_rate: number; // % of income going to investments
+  account_breakdown: InvestmentAccount[];
+  best_month: { 
+    month: string; 
+    amount: number; 
+  };
+  consistency_score: number; // Overall investment consistency
+  period_covered: {
+    start_month: string;
+    end_month: string;
+    total_months: number;
+  };
+}
+
+export interface InvestmentTrendsData {
+  monthly_trends: Array<{
+    month: string;
+    year: number;
+    month_display: string; // "Jan 2024"
+    acorns: number;
+    wealthfront: number;
+    robinhood: number;
+    schwab: number;
+    total: number;
+  }>;
+  account_allocation: Array<{
+    account: string;
+    percentage: number;
+    total: number;
+    color: string;
+    monthly_average: number;
+  }>;
+  peak_month: {
+    month: string;
+    amount: number;
+  };
+}
+
+// Account color mapping for consistent styling
+export const INVESTMENT_ACCOUNT_COLORS = {
+  'Acorns': '#10B981',      // Green
+  'Wealthfront': '#3B82F6', // Blue  
+  'Robinhood': '#F59E0B',   // Yellow
+  'Schwab': '#EF4444',      // Red
+} as const;

@@ -8,7 +8,8 @@ import {
   Upload,
   DollarSign,
   Search,  // Transaction Explorer
-  TrendingUp  // Add TrendingUp icon for Year Analysis
+  TrendingUp,  // Add TrendingUp icon for Year Analysis
+  PiggyBank
 } from 'lucide-react';
 
 const navItems = [
@@ -17,6 +18,7 @@ const navItems = [
   { to: '/year-analysis', icon: TrendingUp, label: 'Year Analysis' }, // Add this line
   { to: '/budget', icon: Target, label: 'Budget' },
   { to: '/transactions', icon: Search, label: 'Transactions' },
+  { to: '/investments', icon: PiggyBank, label: 'Investments' },
   { to: '/upload', icon: Upload, label: 'Upload' },
 ];
 

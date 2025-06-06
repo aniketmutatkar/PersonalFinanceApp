@@ -8,7 +8,9 @@ import {
   Transaction, 
   PagedResponse, 
   BudgetAnalysisResponse,
-  TransactionUpdate
+  TransactionUpdate,
+  InvestmentOverviewData,
+  InvestmentTrendsData
 } from '../types/api';
 
 // Query keys for consistent caching
@@ -24,6 +26,8 @@ export const QUERY_KEYS = {
   categories: ['categories'] as const,
   yearComparison: ['year-comparison'] as const,
   spendingPatterns: ['spending-patterns'] as const,
+  investmentOverview: ['investment-overview'] as const,
+  investmentTrends: ['investment-trends'] as const,
 };
 
 // Financial Overview Hook
@@ -146,6 +150,26 @@ export function useSpendingPatterns(options?: UseQueryOptions<any>) {
     queryKey: QUERY_KEYS.spendingPatterns,
     queryFn: () => api.getSpendingPatterns(),
     staleTime: 10 * 60 * 1000,
+    ...options,
+  });
+}
+
+// Investment Overview Hook
+export function useInvestmentOverview(options?: UseQueryOptions<InvestmentOverviewData>) {
+  return useQuery({
+    queryKey: QUERY_KEYS.investmentOverview,
+    queryFn: () => api.getInvestmentOverview(),
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    ...options,
+  });
+}
+
+// Investment Trends Hook
+export function useInvestmentTrends(options?: UseQueryOptions<InvestmentTrendsData>) {
+  return useQuery({
+    queryKey: QUERY_KEYS.investmentTrends,
+    queryFn: () => api.getInvestmentTrends(),
+    staleTime: 15 * 60 * 1000, // 15 minutes
     ...options,
   });
 }

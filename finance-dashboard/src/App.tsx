@@ -9,7 +9,8 @@ import MonthlyView from './pages/MonthlyView';
 import BudgetView from './pages/BudgetView';
 import UploadView from './pages/UploadView';
 import TransactionExplorerPage from './pages/TransactionExplorerPage';
-import YearAnalysisPage from './pages/YearAnalysisPage'; // Add this import
+import YearAnalysisPage from './pages/YearAnalysisPage';
+import InvestmentView from './pages/InvestmentView';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -34,7 +35,8 @@ function App() {
               <Route path="/budget" element={<BudgetView />} />
               <Route path="/upload" element={<UploadView />} />
               <Route path="/transactions" element={<TransactionExplorerPage />} />
-              <Route path="/year-analysis" element={<YearAnalysisPage />} /> {/* Add this route */}
+              <Route path="/year-analysis" element={<YearAnalysisPage />} />
+              <Route path="/investments" element={<InvestmentView />} /> 
             </Routes>
           </AppLayout>
         </div>
