@@ -7,14 +7,16 @@ import {
   Target, 
   Upload,
   DollarSign,
-  Search  // Add Search icon for Transaction Explorer
+  Search,  // Transaction Explorer
+  TrendingUp  // Add TrendingUp icon for Year Analysis
 } from 'lucide-react';
 
 const navItems = [
   { to: '/', icon: Home, label: 'Dashboard' },
   { to: '/monthly', icon: Calendar, label: 'Monthly' },
+  { to: '/year-analysis', icon: TrendingUp, label: 'Year Analysis' }, // Add this line
   { to: '/budget', icon: Target, label: 'Budget' },
-  { to: '/transactions', icon: Search, label: 'Transactions' }, // Add this line
+  { to: '/transactions', icon: Search, label: 'Transactions' },
   { to: '/upload', icon: Upload, label: 'Upload' },
 ];
 

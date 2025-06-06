@@ -215,3 +215,40 @@ export interface ProcessedTransaction {
   was_duplicate: boolean;
   was_reviewed: boolean;
 }
+
+export interface YearlyData {
+  income: number;
+  spending: number;
+  investments: number;
+  months: number;
+  monthly_income: number;
+  monthly_spending: number;
+  monthly_investments: number;
+  categories: Record<string, number>;
+  average_monthly_spending: number;
+  average_monthly_income: number;
+  average_monthly_investments: number;
+}
+
+export interface YearComparisonResponse {
+  years: Record<string, YearlyData>;
+  available_years: number[];
+  comparison_ready: boolean;
+}
+
+export interface SpendingPattern {
+  type: string;
+  severity: 'info' | 'warning' | 'positive';
+  message: string;
+  data?: Record<string, any>;
+}
+
+export interface SpendingPatternsResponse {
+  patterns: SpendingPattern[];
+  pattern_count: number;
+  analysis_period: {
+    start: string;
+    end: string;
+    months_analyzed: number;
+  };
+}
