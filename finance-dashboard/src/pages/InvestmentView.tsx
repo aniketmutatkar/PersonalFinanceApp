@@ -1,23 +1,46 @@
 // src/pages/InvestmentView.tsx
-import React from 'react';
-import { useInvestmentOverview, useInvestmentTrends, useSpendingPatterns } from '../hooks/useApiData';
+import React, { useState } from 'react';
+import { 
+  usePortfolioOverview, 
+  usePortfolioTrends, 
+  useInvestmentOverview,
+  useInvestmentTrends, 
+  useSpendingPatterns
+} from '../hooks/useApiData';
+import { PortfolioAccount, InstitutionSummary, AccountTypeSummary } from '../types/api';
 import InvestmentOverview from '../components/investments/InvestmentOverview';
 import InvestmentTrends from '../components/investments/InvestmentTrends';
 import AccountComparison from '../components/investments/AccountComparison';
 import InvestmentPatterns from '../components/investments/InvestmentPatterns';
+import PortfolioValueChart from '../components/portfolio/PortfolioValueChart';
+import ManualBalanceEntry from '../components/portfolio/ManualBalanceEntry';
 
 export default function InvestmentView() {
-  // Fetch all required data
+  const [selectedPeriod, setSelectedPeriod] = useState("all");
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  
+  // Portfolio Performance Data (NEW)
   const { 
-    data: overviewData, 
-    isLoading: overviewLoading, 
-    error: overviewError 
+    data: portfolioOverview, 
+    isLoading: portfolioLoading, 
+    error: portfolioError 
+  } = usePortfolioOverview();
+  
+  const { 
+    data: portfolioTrends, 
+    isLoading: trendsLoading, 
+    error: trendsError 
+  } = usePortfolioTrends(selectedPeriod);
+  
+  // Legacy Investment Data (for patterns/consistency analysis)
+  const { 
+    data: legacyOverviewData, 
+    isLoading: legacyOverviewLoading 
   } = useInvestmentOverview();
   
   const { 
-    data: trendsData, 
-    isLoading: trendsLoading, 
-    error: trendsError 
+    data: legacyTrendsData, 
+    isLoading: legacyTrendsLoading 
   } = useInvestmentTrends();
   
   const { 
@@ -25,27 +48,67 @@ export default function InvestmentView() {
     isLoading: patternsLoading 
   } = useSpendingPatterns();
 
-  // Check for any critical errors
-  const hasError = overviewError || trendsError;
+  // Check for critical errors
+  const hasError = portfolioError || trendsError;
+
+  // DEBUG: Log the data (remove after testing)
+  console.log('🔍 Portfolio Overview:', portfolioOverview);
+  console.log('🔍 Portfolio Trends:', portfolioTrends);
+  console.log('🔍 Loading States:', { portfolioLoading, trendsLoading });
+  console.log('🔍 Should render chart?', !!(portfolioTrends && !trendsLoading));
 
   return (
     <div className="space-y-8">
-      {/* Page Header */}
+      {/* Enhanced Page Header */}
       <div className="border-b border-gray-700 pb-6">
-        <h1 className="text-3xl font-bold text-white">Investment Analytics</h1>
-        <p className="text-gray-400 mt-2">
-          Track your investment deposits, account allocation, and growth patterns across all platforms.
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Portfolio Analytics</h1>
+            <p className="text-gray-400 mt-2">
+              Real portfolio performance, account allocation, and growth tracking across all platforms.
+            </p>
+          </div>
+          
+          {/* Manual Balance Entry Button */}
+          <button
+            onClick={() => setShowManualEntry(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+          >
+            <span className="text-sm">📊</span>
+            <span>Add Balance</span>
+          </button>
+        </div>
         
-        {/* Period indicator */}
-        {overviewData && !overviewLoading && (
-          <div className="mt-4 flex items-center space-x-4 text-sm text-gray-500">
-            <span>
-              📊 Analysis Period: {overviewData.period_covered.start_month} → {overviewData.period_covered.end_month}
-            </span>
-            <span>
-              📅 {overviewData.period_covered.total_months} months of data
-            </span>
+        {/* Portfolio Summary Bar */}
+        {portfolioOverview && !portfolioLoading && (
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+              <div className="text-2xl font-bold text-green-400">
+                ${portfolioOverview.total_portfolio_value.toLocaleString()}
+              </div>
+              <div className="text-gray-400 text-sm">Total Portfolio Value</div>
+            </div>
+            
+            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+              <div className="text-2xl font-bold text-blue-400">
+                +${portfolioOverview.total_growth.toLocaleString()}
+              </div>
+              <div className="text-gray-400 text-sm">Total Growth</div>
+            </div>
+            
+            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+              <div className="text-2xl font-bold text-purple-400">
+                {portfolioOverview.growth_percentage.toFixed(1)}%
+              </div>
+              <div className="text-gray-400 text-sm">Growth Rate</div>
+            </div>
+            
+            <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+              <div className="text-2xl font-bold text-yellow-400">
+                {portfolioOverview.accounts.length}
+              </div>
+              <div className="text-gray-400 text-sm">Active Accounts</div>
+            </div>
           </div>
         )}
       </div>
@@ -56,38 +119,122 @@ export default function InvestmentView() {
           <div className="flex items-center space-x-3">
             <span className="text-red-400 text-xl">⚠️</span>
             <div>
-              <h3 className="text-red-400 font-medium">Error Loading Investment Data</h3>
+              <h3 className="text-red-400 font-medium">Error Loading Portfolio Data</h3>
               <p className="text-red-300 text-sm mt-1">
-                {overviewError?.message || trendsError?.message || 'Unable to load investment analytics'}
+                {portfolioError?.message || trendsError?.message || 'Unable to load portfolio analytics'}
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Investment Overview Cards */}
-      <InvestmentOverview 
-        data={overviewData} 
-        isLoading={overviewLoading} 
-      />
+      {/* Portfolio Performance Overview */}
+      {portfolioOverview && !portfolioLoading && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Top Performing Accounts */}
+          <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
+            <h3 className="text-lg font-medium text-white mb-4">🏆 Top Performing Accounts</h3>
+            <div className="space-y-3">
+              {portfolioOverview.accounts
+                .sort((a: PortfolioAccount, b: PortfolioAccount) => b.annualized_return - a.annualized_return)
+                .slice(0, 5)
+                .map((account: PortfolioAccount, index: number) => (
+                  <div key={account.account_id} className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-gray-400 text-sm">#{index + 1}</span>
+                      <div>
+                        <div className="text-white font-medium">{account.account_name}</div>
+                        <div className="text-gray-400 text-xs">{account.institution}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`font-bold ${account.annualized_return >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {account.annualized_return.toFixed(1)}%
+                      </div>
+                      <div className="text-gray-400 text-xs">annual return</div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
 
-      {/* Investment Trends Chart */}
+          {/* Institution Performance */}
+          <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
+            <h3 className="text-lg font-medium text-white mb-4">🏛️ Institution Performance</h3>
+            <div className="space-y-3">
+              {portfolioOverview.by_institution
+                .sort((a: InstitutionSummary, b: InstitutionSummary) => b.growth_percentage - a.growth_percentage)
+                .map((institution: InstitutionSummary, index: number) => (
+                  <div key={institution.institution} className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-gray-400 text-sm">#{index + 1}</span>
+                      <div>
+                        <div className="text-white font-medium">{institution.institution}</div>
+                        <div className="text-gray-400 text-xs">
+                          {institution.account_count} account{institution.account_count !== 1 ? 's' : ''}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`font-bold ${institution.growth_percentage >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {institution.growth_percentage.toFixed(1)}%
+                      </div>
+                      <div className="text-gray-400 text-xs">
+                        ${institution.total_balance.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Legacy Investment Overview (Enhanced with Portfolio Context) */}
+      <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-white">Investment Deposit Analysis</h2>
+          <span className="text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded">
+            Transaction-based data
+          </span>
+        </div>
+        <InvestmentOverview 
+          data={legacyOverviewData} 
+          isLoading={legacyOverviewLoading} 
+        />
+      </div>
+
+      {/* Portfolio Value Trends Chart */}
+      {portfolioTrends && !trendsLoading && (
+        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
+          <h2 className="text-xl font-bold text-white mb-6">📈 Portfolio Value Over Time</h2>
+          <PortfolioValueChart 
+            data={portfolioTrends} 
+            isLoading={trendsLoading}
+            portfolioOverview={portfolioOverview}
+            selectedPeriod={selectedPeriod}
+            onPeriodChange={setSelectedPeriod}
+          />
+        </div>
+      )}
+
+      {/* Enhanced Investment Trends (Legacy Deposit Data) */}
       <InvestmentTrends 
-        data={trendsData} 
-        isLoading={trendsLoading} 
+        data={legacyTrendsData} 
+        isLoading={legacyTrendsLoading} 
       />
 
-      {/* Bottom Section: Account Comparison + Investment Patterns */}
+      {/* Account Comparison + Investment Patterns */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Account Comparison - Takes 2 columns on large screens */}
+        {/* Account Comparison (Enhanced with Portfolio Data) */}
         <div className="lg:col-span-2">
           <AccountComparison 
-            data={trendsData} 
-            isLoading={trendsLoading} 
+            data={legacyTrendsData} 
+            isLoading={legacyTrendsLoading} 
           />
         </div>
         
-        {/* Investment Patterns - Takes 1 column on large screens */}
+        {/* Investment Patterns */}
         <div className="lg:col-span-1">
           <InvestmentPatterns 
             patternsData={patternsData} 
@@ -96,59 +243,103 @@ export default function InvestmentView() {
         </div>
       </div>
 
-      {/* Investment Summary Footer */}
-      {overviewData && !overviewLoading && (
-        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 mt-8">
-          <h3 className="text-lg font-medium text-white mb-4">Investment Summary</h3>
+      {/* Account Type Performance */}
+      {portfolioOverview && !portfolioLoading && (
+        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
+          <h2 className="text-xl font-bold text-white mb-6">🏦 Account Type Performance</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {portfolioOverview.by_account_type.map((accountType: AccountTypeSummary) => (
+              <div key={accountType.account_type} className="bg-gray-900/50 rounded-lg p-4">
+                <div className="text-center">
+                  <div className="text-lg font-bold text-white capitalize mb-1">
+                    {accountType.account_type.replace('_', ' ')}
+                  </div>
+                  <div className="text-2xl font-bold text-blue-400 mb-2">
+                    ${accountType.total_balance.toLocaleString()}
+                  </div>
+                  <div className={`text-sm font-medium mb-2 ${
+                    accountType.growth_percentage >= 0 ? 'text-green-400' : 'text-red-400'
+                  }`}>
+                    {accountType.growth_percentage >= 0 ? '+' : ''}{accountType.growth_percentage.toFixed(1)}%
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    {accountType.account_count} account{accountType.account_count !== 1 ? 's' : ''}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Growth: ${accountType.total_growth.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Enhanced Summary Footer */}
+      {portfolioOverview && !portfolioLoading && (
+        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
+          <h3 className="text-lg font-medium text-white mb-4">📊 Portfolio Summary</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
             
-            {/* Total Investment Activity */}
+            {/* Portfolio Overview */}
             <div>
-              <h4 className="text-gray-300 font-medium mb-2">Total Activity</h4>
+              <h4 className="text-gray-300 font-medium mb-2">Portfolio Overview</h4>
               <ul className="space-y-1 text-gray-400">
-                <li>• Total Invested: ${overviewData.total_invested.toLocaleString()}</li>
-                <li>• Active Accounts: {overviewData.active_accounts}</li>
-                <li>• Best Month: {overviewData.best_month.month}</li>
+                <li>• Total Value: ${portfolioOverview.total_portfolio_value.toLocaleString()}</li>
+                <li>• Total Deposits: ${portfolioOverview.total_deposits.toLocaleString()}</li>
+                <li>• Total Growth: ${portfolioOverview.total_growth.toLocaleString()}</li>
+                <li>• Growth Rate: {portfolioOverview.growth_percentage.toFixed(1)}%</li>
               </ul>
             </div>
             
-            {/* Performance Metrics */}
+            {/* Best Performers */}
             <div>
-              <h4 className="text-gray-300 font-medium mb-2">Performance</h4>
+              <h4 className="text-gray-300 font-medium mb-2">Best Performers</h4>
               <ul className="space-y-1 text-gray-400">
-                <li>• Investment Rate: {overviewData.investment_rate.toFixed(1)}% of income</li>
-                <li>• Monthly Average: ${overviewData.monthly_average.toLocaleString()}</li>
-                <li>• Consistency Score: {overviewData.consistency_score.toFixed(0)}/100</li>
-              </ul>
-            </div>
-            
-            {/* Account Breakdown */}
-            <div>
-              <h4 className="text-gray-300 font-medium mb-2">Top Accounts</h4>
-              <ul className="space-y-1 text-gray-400">
-                {overviewData.account_breakdown
-                  .sort((a, b) => b.total_deposits - a.total_deposits)
+                {portfolioOverview.accounts
+                  .sort((a: PortfolioAccount, b: PortfolioAccount) => b.annualized_return - a.annualized_return)
                   .slice(0, 3)
-                  .map(account => (
-                    <li key={account.name}>
-                      • {account.name}: ${account.total_deposits.toLocaleString()}
+                  .map((account: PortfolioAccount) => (
+                    <li key={account.account_id}>
+                      • {account.account_name}: {account.annualized_return.toFixed(1)}%
                     </li>
                   ))
                 }
               </ul>
             </div>
+            
+            {/* Data Coverage */}
+            <div>
+              <h4 className="text-gray-300 font-medium mb-2">Data Coverage</h4>
+              <ul className="space-y-1 text-gray-400">
+                <li>• Active Accounts: {portfolioOverview.accounts.length}</li>
+                <li>• Institutions: {portfolioOverview.by_institution.length}</li>
+                <li>• As of: {new Date(portfolioOverview.as_of_date).toLocaleDateString()}</li>
+                <li>• Period: {portfolioOverview.accounts?.[0]?.period_months || 0} months</li>
+              </ul>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Manual Balance Entry Modal */}
+      <ManualBalanceEntry 
+        isOpen={showManualEntry}
+        onClose={() => setShowManualEntry(false)}
+        onBalanceAdded={() => {
+          console.log('Balance added successfully!');
+          // Modal will auto-close after success message
+        }}
+      />
       
-      {/* Future Enhancement Note */}
+      {/* Development Note */}
       <div className="bg-blue-900/10 border border-blue-800/20 rounded-lg p-4">
         <div className="flex items-start space-x-3">
           <span className="text-blue-400 text-lg">🚀</span>
           <div>
-            <h4 className="text-blue-300 font-medium text-sm">Future Enhancement</h4>
+            <h4 className="text-blue-300 font-medium text-sm">Enhanced with Real Portfolio Data!</h4>
             <p className="text-blue-200/80 text-xs mt-1">
-              Portfolio balance tracking and growth calculations coming soon with PDF statement upload.
+              Now showing actual portfolio performance, growth rates, and real account values alongside deposit tracking.
             </p>
           </div>
         </div>

@@ -306,6 +306,146 @@ export interface InvestmentTrendsData {
   };
 }
 
+export interface PortfolioAccount {
+  account_id: number;
+  account_name: string;
+  institution: string;
+  account_type: string;
+  start_balance: number;
+  end_balance: number;
+  net_deposits: number;
+  actual_growth: number;
+  growth_percentage: number;
+  annualized_return: number;
+  period_months: number;
+}
+
+export interface InstitutionSummary {
+  institution: string;
+  total_balance: number;
+  total_growth: number;
+  growth_percentage: number;
+  account_count: number;
+  account_names: string[];
+}
+
+export interface AccountTypeSummary {
+  account_type: string;
+  total_balance: number;
+  total_growth: number;
+  growth_percentage: number;
+  account_count: number;
+  account_names: string[];
+}
+
+export interface PortfolioOverview {
+  total_portfolio_value: number;
+  total_deposits: number;
+  total_growth: number;
+  growth_percentage: number;
+  accounts: PortfolioAccount[];
+  by_institution: InstitutionSummary[];
+  by_account_type: AccountTypeSummary[];
+  as_of_date: string;
+}
+
+export interface MonthlyPortfolioValue {
+  month: string;
+  year: number;
+  month_display: string;
+  wealthfront_investment?: number;
+  schwab_brokerage?: number;
+  acorns?: number;
+  robinhood?: number;
+  plan_401k?: number;
+  roth_ira?: number;
+  wealthfront_cash?: number;
+  total_value: number;
+}
+
+export interface PortfolioTrends {
+  monthly_values: Array<{
+    month: string;
+    year: number;
+    month_display: string;
+    [key: string]: any; // Allow any account columns
+    total_value: number;
+  }>;
+  growth_attribution: {
+    total_growth: number;
+    market_growth: number;
+    deposit_growth: number;
+  };
+  best_month: {
+    month: string;
+    amount: number;
+  };
+  worst_month: {
+    month: string;
+    amount: number;
+  };
+}
+
+export interface ManualBalanceCreate {
+  account_id: number;
+  balance_date: string;
+  balance_amount: number;
+  notes?: string;
+}
+
+export interface BalanceResponse {
+  id: number;
+  account_id: number;
+  balance_date: string;
+  balance_amount: number;
+  data_source: string;
+  notes?: string;
+}
+
+export interface AccountListResponse {
+  accounts: Array<{
+    id: number;
+    account_name: string;
+    institution: string;
+    account_type: string;
+    is_active: boolean;
+  }>;
+}
+
+export interface BalanceListResponse {
+  balances: BalanceResponse[];
+  total: number;
+}
+
+// Portfolio Account Colors for Consistency
+export const PORTFOLIO_ACCOUNT_COLORS = {
+  'Wealthfront Investment': '#3B82F6',
+  'Schwab Brokerage': '#EF4444', 
+  'Acorns': '#10B981',
+  'Robinhood': '#F59E0B',
+  '401(k) Plan': '#8B5CF6',
+  'Roth IRA': '#EC4899',
+  'Wealthfront Cash': '#6B7280'
+} as const;
+
+export interface AccountPerformance {
+  account_id: number;
+  account_name: string;
+  institution: string;
+  account_type: string;
+  start_balance: number;
+  end_balance: number;
+  net_deposits: number;
+  actual_growth: number;
+  growth_percentage: number;
+  annualized_return: number;
+  period_months: number;
+}
+
+export interface InstitutionBreakdown {
+  institutions: InstitutionSummary[];
+}
+
 // Account color mapping for consistent styling
 export const INVESTMENT_ACCOUNT_COLORS = {
   'Acorns': '#10B981',      // Green

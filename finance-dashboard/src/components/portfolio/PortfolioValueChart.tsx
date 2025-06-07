@@ -1,0 +1,457 @@
+// src/components/portfolio/PortfolioValueChart.tsx
+import React from 'react';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  Area,
+  AreaChart
+} from 'recharts';
+import { PortfolioTrends, PortfolioOverview } from '../../types/api';
+
+interface PortfolioValueChartProps {
+  data: PortfolioTrends;
+  isLoading?: boolean;
+  portfolioOverview?: PortfolioOverview;
+  selectedPeriod?: string;
+  onPeriodChange?: (period: string) => void;
+}
+
+interface TooltipProps {
+  active?: boolean;
+  payload?: any[];
+  label?: string;
+}
+
+const CustomTooltip: React.FC<TooltipProps> = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    // DEBUG: Log the payload structure to understand what Recharts sends
+    console.log('🔧 Tooltip Payload:', payload);
+    console.log('🔧 Tooltip Label:', label);
+    
+    // For Area chart, try multiple ways to get the total value
+    let totalValue = 0;
+    
+    // Method 1: Look for total_value in payload dataKey
+    const totalValuePayload = payload.find(p => p?.dataKey === 'total_value');
+    if (totalValuePayload?.value) {
+      totalValue = Number(totalValuePayload.value);
+    }
+    
+    // Method 2: Get from first payload's raw data
+    if (!totalValue && payload[0]?.payload?.total_value) {
+      totalValue = Number(payload[0].payload.total_value);
+    }
+    
+    // Method 3: Calculate from individual account values in payload
+    if (!totalValue) {
+      totalValue = payload
+        .filter(p => p?.dataKey !== 'total_value' && p?.value && typeof p.value === 'number')
+        .reduce((sum, p) => sum + Number(p.value || 0), 0);
+    }
+    
+    console.log('🔧 Total Value Found:', totalValue);
+    console.log('🔧 Total Value Payload:', totalValuePayload);
+    
+    return (
+      <div className="bg-gray-800 border border-gray-600 rounded-lg p-4 shadow-lg">
+        <p className="text-white font-medium mb-2">{label || 'Unknown Month'}</p>
+        <p className="text-green-400 font-bold text-lg">
+          Total: ${totalValue.toLocaleString()}
+        </p>
+        <div className="mt-2 space-y-1">
+          {payload
+            .filter(p => p?.dataKey !== 'total_value' && p?.value && Number(p.value) > 0)
+            .sort((a, b) => Number(b?.value || 0) - Number(a?.value || 0))
+            .map((entry, index) => {
+              const value = Number(entry?.value || 0);
+              const displayName = entry?.dataKey
+                ? entry.dataKey.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+                : 'Unknown Account';
+              
+              return (
+                <div key={index} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center space-x-2">
+                    <div 
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: entry?.color || '#6B7280' }}
+                    />
+                    <span className="text-gray-300">
+                      {displayName}
+                    </span>
+                  </div>
+                  <span className="text-white font-medium">
+                    ${value.toLocaleString()}
+                  </span>
+                </div>
+              );
+            })}
+        </div>
+        
+        {/* DEBUG: Show what we found */}
+        <div className="mt-3 pt-2 border-t border-gray-600">
+          <div className="text-xs text-gray-400">
+            Debug: Total = {totalValue} | Payload items: {payload.length}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
+export default function PortfolioValueChart({ 
+  data, 
+  isLoading, 
+  portfolioOverview, 
+  selectedPeriod = "all",
+  onPeriodChange 
+}: PortfolioValueChartProps) {
+  // DEBUG: Log what we're receiving
+  console.log('📊 Chart Data Received:', data);
+  console.log('📊 Selected Period:', selectedPeriod);
+  console.log('📊 Monthly Values:', data?.monthly_values);
+  console.log('📊 Monthly Values Length:', data?.monthly_values?.length);
+  console.log('📊 Growth Attribution:', data?.growth_attribution);
+  console.log('📊 Best Month:', data?.best_month);
+  console.log('📊 Worst Month:', data?.worst_month);
+  
+  if (isLoading) {
+    return (
+      <div className="h-96 bg-gray-900/50 rounded-lg p-4 animate-pulse">
+        <div className="flex items-center justify-center h-full">
+          <div className="text-gray-400">Loading portfolio chart...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data?.monthly_values || data.monthly_values.length === 0) {
+    console.log('📊 No chart data available:', { 
+      hasData: !!data, 
+      hasMonthlyValues: !!data?.monthly_values,
+      lengthCheck: data?.monthly_values?.length 
+    });
+    return (
+      <div className="h-96 bg-gray-900/50 rounded-lg p-4">
+        <div className="flex items-center justify-center h-full text-gray-400">
+          <div className="text-center">
+            <div className="text-2xl mb-2">📊</div>
+            <div>No portfolio data available</div>
+            <div className="text-xs mt-2">
+              Debug: Data exists: {!!data ? 'Yes' : 'No'}, 
+              Monthly values: {data?.monthly_values?.length || 0} items
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Prepare data for the chart - FILTER OUT EMPTY MONTHS
+  const chartData = data.monthly_values
+    .filter(value => value && typeof value.total_value === 'number' && value.total_value > 0) // More robust filtering
+    .map(value => {
+      // DEBUG: Log each value to see the structure
+      console.log('📊 Processing value:', value);
+      
+      const item: any = {
+        month_display: value.month_display || `${value.month || 'Unknown'} ${value.year || ''}`,
+        total_value: Number(value.total_value || 0),
+      };
+
+      // Add individual account values dynamically
+      if (value && typeof value === 'object') {
+        Object.keys(value).forEach(key => {
+          if (key !== 'month' && key !== 'year' && key !== 'month_display' && key !== 'total_value' && key !== 'date') {
+            const accountValue = value[key as keyof typeof value];
+            if (typeof accountValue === 'number' && !isNaN(accountValue)) { 
+              item[key] = accountValue;
+            }
+          }
+        });
+      }
+
+      console.log('📊 Processed item:', item);
+      return item;
+    });
+
+  console.log('📊 Final chartData (filtered):', chartData);
+  console.log('📊 Sample chartData item:', chartData[0]);
+  console.log('📊 Latest chartData item:', chartData[chartData.length - 1]);
+
+  // Ensure we have valid chart data
+  if (chartData.length === 0) {
+    return (
+      <div className="h-96 bg-gray-900/50 rounded-lg p-4">
+        <div className="flex items-center justify-center h-full text-gray-400">
+          <div className="text-center">
+            <div className="text-2xl mb-2">📊</div>
+            <div>No valid portfolio data for selected period</div>
+            <div className="text-xs mt-2">
+              Original data points: {data.monthly_values.length}, 
+              Filtered: {chartData.length}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Get account names for the lines (excluding total_value and month info)
+  const sampleItem = chartData[0] || {};
+  const accountKeys = Object.keys(sampleItem).filter(
+    key => key !== 'month_display' && key !== 'total_value'
+  );
+
+  // Calculate some stats for display - FIXED TO USE PORTFOLIO OVERVIEW DATA
+  const latestValue = chartData[chartData.length - 1]?.total_value || 0;
+  const firstValue = chartData[0]?.total_value || 0;
+  
+  // Get real portfolio performance from the parent component if available
+  // This should come from your portfolio overview data
+  const totalGrowth = latestValue - firstValue; // Chart growth (misleading)
+  
+  // We'll show the VALUE growth, not the misleading percentage
+  const chartValueGrowth = totalGrowth;
+  
+  // DEBUG: Log the calculation values
+  console.log('📊 Growth Calculation Debug:');
+  console.log('  First Value:', firstValue, 'from', chartData[0]?.month_display);
+  console.log('  Latest Value:', latestValue, 'from', chartData[chartData.length - 1]?.month_display);
+  console.log('  Chart Value Growth:', chartValueGrowth);
+  console.log('📊 Data.growth_attribution:', data.growth_attribution);
+  console.log('📊 Data.best_month:', data.best_month);
+  console.log('📊 Data.worst_month:', data.worst_month);
+
+  return (
+    <div className="space-y-6">
+      {/* Chart Period Selector */}
+      {onPeriodChange && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <span className="text-gray-400 text-sm">Chart Period:</span>
+            <div className="flex space-x-2">
+              {['6m', '1y', '2y', 'all'].map((period) => (
+                <button
+                  key={period}
+                  onClick={() => onPeriodChange(period)}
+                  className={`px-3 py-1 rounded text-sm transition-colors ${
+                    selectedPeriod === period
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  {period === 'all' ? 'All Time' : period.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="text-xs text-gray-500">
+            Showing {chartData.length} months of data
+          </div>
+        </div>
+      )}
+
+      {/* Chart Stats Header */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-gray-900/50 rounded-lg p-4 text-center">
+          <div className="text-2xl font-bold text-green-400">
+            ${latestValue.toLocaleString()}
+          </div>
+          <div className="text-gray-400 text-sm">Current Value</div>
+        </div>
+        
+        <div className="bg-gray-900/50 rounded-lg p-4 text-center">
+          <div className="text-2xl font-bold text-blue-400">
+            +${chartValueGrowth.toLocaleString()}
+          </div>
+          <div className="text-gray-400 text-sm">Chart Value Growth</div>
+          <div className="text-gray-500 text-xs">From first to latest data point</div>
+        </div>
+        
+        <div className="bg-gray-900/50 rounded-lg p-4 text-center">
+          <div className="text-2xl font-bold text-purple-400">
+            {portfolioOverview ? `${portfolioOverview.growth_percentage.toFixed(1)}%` : 'See Overview'}
+          </div>
+          <div className="text-gray-400 text-sm">Real Return %</div>
+          <div className="text-gray-500 text-xs">
+            {portfolioOverview ? 'Total growth vs deposits' : 'Check portfolio overview above'}
+          </div>
+        </div>
+        
+        <div className="bg-gray-900/50 rounded-lg p-4 text-center">
+          <div className="text-2xl font-bold text-yellow-400">
+            {chartData.length}
+          </div>
+          <div className="text-gray-400 text-sm">Months Tracked</div>
+        </div>
+      </div>
+
+      {/* Main Portfolio Chart */}
+      <div className="h-96 bg-gray-900/50 rounded-lg p-4">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <defs>
+              <linearGradient id="totalGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#10B981" stopOpacity={0.1}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+            <XAxis 
+              dataKey="month_display" 
+              stroke="#9CA3AF"
+              fontSize={12}
+              interval="preserveStartEnd"
+              angle={-45}
+              textAnchor="end"
+              height={80}
+            />
+            <YAxis 
+              stroke="#9CA3AF"
+              fontSize={12}
+              tickFormatter={(value) => `$${(Number(value) / 1000).toFixed(0)}k`}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend 
+              wrapperStyle={{ color: '#9CA3AF' }}
+              iconType="line"
+            />
+            
+            {/* Total portfolio value as filled area */}
+            <Area
+              type="monotone"
+              dataKey="total_value"
+              stroke="#10B981"
+              strokeWidth={3}
+              fill="url(#totalGradient)"
+              fillOpacity={0.6}
+              name="Total Portfolio Value"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Individual Account Trends */}
+      <div className="h-80 bg-gray-900/50 rounded-lg p-4">
+        <h4 className="text-white font-medium mb-4">Account Breakdown</h4>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+            <XAxis 
+              dataKey="month_display" 
+              stroke="#9CA3AF"
+              fontSize={12}
+              interval="preserveStartEnd"
+              angle={-45}
+              textAnchor="end"
+              height={60}
+            />
+            <YAxis 
+              stroke="#9CA3AF"
+              fontSize={12}
+              tickFormatter={(value) => `$${(Number(value) / 1000).toFixed(0)}k`}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend 
+              wrapperStyle={{ color: '#9CA3AF' }}
+              iconType="line"
+            />
+            
+            {/* Individual account lines */}
+            {accountKeys.map((accountKey, index) => {
+              // Map account keys to display names and colors
+              const displayName = accountKey
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, (l: string) => l.toUpperCase());
+              
+              // Get color from mapping or use default
+              const colors = [
+                '#3B82F6', '#EF4444', '#10B981', '#F59E0B', 
+                '#8B5CF6', '#EC4899', '#6B7280'
+              ];
+              const color = colors[index % colors.length];
+              
+              return (
+                <Line
+                  key={accountKey}
+                  type="monotone"
+                  dataKey={accountKey}
+                  stroke={color}
+                  strokeWidth={2}
+                  dot={false}
+                  name={displayName}
+                  connectNulls={false}
+                />
+              );
+            })}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Growth Attribution Summary */}
+      {data.growth_attribution && (
+        <div className="bg-gray-900/50 rounded-lg p-6">
+          <h4 className="text-white font-medium mb-4">Growth Attribution</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="text-center">
+              <div className="text-xl font-bold text-green-400">
+                ${Number(data.growth_attribution.total_growth || 0).toLocaleString()}
+              </div>
+              <div className="text-gray-400 text-sm">Total Growth</div>
+            </div>
+            
+            <div className="text-center">
+              <div className="text-xl font-bold text-blue-400">
+                ${Number(data.growth_attribution.market_growth || 0).toLocaleString()}
+              </div>
+              <div className="text-gray-400 text-sm">Market Growth</div>
+            </div>
+            
+            <div className="text-center">
+              <div className="text-xl font-bold text-purple-400">
+                ${Number(data.growth_attribution.deposit_growth || 0).toLocaleString()}
+              </div>
+              <div className="text-gray-400 text-sm">From Deposits</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Best/Worst Month Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {data.best_month && (
+          <div className="bg-green-900/20 border border-green-800/30 rounded-lg p-4">
+            <div className="flex items-center space-x-3">
+              <span className="text-green-400 text-xl">📈</span>
+              <div>
+                <h4 className="text-green-400 font-medium">Best Month</h4>
+                <p className="text-white">{data.best_month.month || 'Unknown'}</p>
+                <p className="text-green-300">${Number(data.best_month.amount || 0).toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {data.worst_month && (
+          <div className="bg-red-900/20 border border-red-800/30 rounded-lg p-4">
+            <div className="flex items-center space-x-3">
+              <span className="text-red-400 text-xl">📉</span>
+              <div>
+                <h4 className="text-red-400 font-medium">Worst Month</h4>
+                <p className="text-white">{data.worst_month.month || 'Unknown'}</p>
+                <p className="text-red-300">${Number(data.worst_month.amount || 0).toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

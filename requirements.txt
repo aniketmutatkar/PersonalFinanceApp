@@ -10,3 +10,7 @@ streamlit
 seaborn
 matplotlib
 fastapi
+PyPDF2 
+pdfplumber 
+pytesseract
+pillow

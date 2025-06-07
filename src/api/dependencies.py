@@ -5,9 +5,12 @@ from typing import Generator
 
 from src.repositories.transaction_repository import TransactionRepository
 from src.repositories.monthly_summary_repository import MonthlySummaryRepository
+from src.repositories.portfolio_repository import PortfolioRepository
 from src.services.import_service import ImportService
 from src.services.reporting_service import ReportingService
+from src.services.portfolio_service import PortfolioService
 from src.config.config_manager import ConfigManager
+# REMOVE THIS LINE: from src.api.dependencies import get_portfolio_service, get_portfolio_repository
 from database import get_db_session
 
 # Database session dependency
@@ -35,6 +38,10 @@ def get_monthly_summary_repository():
     """Get the monthly summary repository"""
     return MonthlySummaryRepository()
 
+def get_portfolio_repository():
+    """Get the portfolio repository"""
+    return PortfolioRepository()
+
 # Service dependencies
 def get_import_service(
     transaction_repo: TransactionRepository = Depends(get_transaction_repository),
@@ -50,3 +57,10 @@ def get_reporting_service(
 ):
     """Get the reporting service with its dependencies"""
     return ReportingService(transaction_repo, monthly_summary_repo)
+
+def get_portfolio_service(
+    portfolio_repo: PortfolioRepository = Depends(get_portfolio_repository),
+    transaction_repo: TransactionRepository = Depends(get_transaction_repository)
+):
+    """Get the portfolio service with its dependencies"""
+    return PortfolioService(portfolio_repo, transaction_repo)

@@ -1,3 +1,4 @@
+
 // src/services/api.ts
 import {
   FinancialOverview,
@@ -17,6 +18,14 @@ import {
   InvestmentTrendsData,
   InvestmentAccount,
   INVESTMENT_ACCOUNT_COLORS,
+  PortfolioOverview,
+  PortfolioTrends,
+  AccountPerformance,
+  InstitutionBreakdown,
+  AccountListResponse,
+  ManualBalanceCreate,
+  BalanceResponse,
+  BalanceListResponse,
 } from '../types/api';
 
 // API Client Class
@@ -24,7 +33,7 @@ export class FinanceTrackerApi {
   private baseUrl: string;
 
   constructor(baseUrl = process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:8000/api' 
+    ? 'http://192.168.1.226:8000/api' 
     : '/api'
   ) {
     this.baseUrl = baseUrl;
@@ -453,6 +462,50 @@ export class FinanceTrackerApi {
       'September': 8, 'October': 9, 'November': 10, 'December': 11
     };
     return months[monthName as keyof typeof months] || 0;
+  }
+
+  // Portfolio Overview
+  async getPortfolioOverview(asOfDate?: string): Promise<PortfolioOverview> {
+    const params = asOfDate ? `?as_of_date=${asOfDate}` : '';
+    return this.request(`/portfolio/overview${params}`);
+  }
+
+  // Portfolio Trends
+  async getPortfolioTrends(period: string = "1y"): Promise<PortfolioTrends> {
+    return this.request(`/portfolio/trends?period=${period}`);
+  }
+
+  // Account Performance
+  async getAccountPerformance(accountId: number, period: string = "1y"): Promise<AccountPerformance> {
+    return this.request(`/portfolio/performance/${accountId}?period=${period}`);
+  }
+
+  // Institution Breakdown
+  async getInstitutionBreakdown(): Promise<InstitutionBreakdown> {
+    return this.request('/portfolio/institutions');
+  }
+
+  // Account Management
+  async getAllAccounts(): Promise<AccountListResponse> {
+    return this.request('/portfolio/accounts');
+  }
+
+  // Manual Balance Entry
+  async addManualBalance(balanceData: ManualBalanceCreate): Promise<BalanceResponse> {
+    return this.request('/portfolio/balances', {
+      method: 'POST',
+      body: JSON.stringify(balanceData)
+    });
+  }
+
+  // Balance History
+  async getBalanceHistory(accountId?: number, startDate?: string, endDate?: string): Promise<BalanceListResponse> {
+    const params = new URLSearchParams();
+    if (accountId) params.append('account_id', accountId.toString());
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    
+    return this.request(`/portfolio/balances?${params}`);
   }
 
 }

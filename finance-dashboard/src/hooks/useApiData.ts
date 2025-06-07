@@ -10,7 +10,8 @@ import {
   BudgetAnalysisResponse,
   TransactionUpdate,
   InvestmentOverviewData,
-  InvestmentTrendsData
+  InvestmentTrendsData,
+  ManualBalanceCreate,
 } from '../types/api';
 
 // Query keys for consistent caching
@@ -189,6 +190,50 @@ export function useUpdateTransaction() {
     },
     onError: (error) => {
       console.error('Transaction update failed:', error);
+    },
+  });
+}
+
+export const usePortfolioOverview = (asOfDate?: string) => 
+  useQuery({
+    queryKey: ['portfolioOverview', asOfDate],
+    queryFn: () => api.getPortfolioOverview(asOfDate),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+export const usePortfolioTrends = (period: string = "1y") =>
+  useQuery({
+    queryKey: ['portfolioTrends', period],
+    queryFn: () => api.getPortfolioTrends(period),
+    staleTime: 10 * 60 * 1000, // 10 minutes
+  });
+
+export const useAllAccounts = () =>
+  useQuery({
+    queryKey: ['allAccounts'],
+    queryFn: () => api.getAllAccounts(),
+    staleTime: 30 * 60 * 1000, // 30 minutes - accounts don't change often
+  });
+
+export const useBalanceHistory = (accountId?: number, startDate?: string, endDate?: string) =>
+  useQuery({
+    queryKey: ['balanceHistory', accountId, startDate, endDate],
+    queryFn: () => api.getBalanceHistory(accountId, startDate, endDate),
+    enabled: !!accountId,
+    staleTime: 15 * 60 * 1000,
+  });
+
+// Mutation for adding manual balances
+export const useAddManualBalance = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (balanceData: ManualBalanceCreate) => api.addManualBalance(balanceData),
+    onSuccess: () => {
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: ['portfolioOverview'] });
+      queryClient.invalidateQueries({ queryKey: ['portfolioTrends'] });
+      queryClient.invalidateQueries({ queryKey: ['balanceHistory'] });
     },
   });
 }

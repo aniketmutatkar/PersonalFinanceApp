@@ -52,8 +52,10 @@ if env == "production":
 else:
     # Development CORS settings
     origins = [
-        "http://localhost:3000",  # React dev server
-        "http://127.0.0.1:3000"
+        "http://localhost:3000",
+        "http://127.0.0.1:3000", 
+        "http://192.168.1.226:3000",  # Your computer
+        "http://192.168.1.162:3000",  # Your mobile phone
     ]
 
 app.add_middleware(
@@ -85,7 +87,7 @@ async def health_check():
     return {"status": "healthy"}
 
 # Import routers
-from src.api.routers import transactions, monthly_summary, categories, budgets, statistics
+from src.api.routers import transactions, monthly_summary, categories, budgets, statistics, portfolio
 
 # Include routers
 app.include_router(transactions.router, prefix="/api/transactions", tags=["transactions"])
@@ -94,6 +96,7 @@ app.include_router(categories.router, prefix="/api/categories", tags=["categorie
 app.include_router(budgets.router, prefix="/api/budgets", tags=["budgets"])
 app.include_router(exports.router, prefix="/api/exports", tags=["exports"])
 app.include_router(statistics.router, prefix="/api/statistics", tags=["statistics"])
+app.include_router(portfolio.router, prefix="/api/portfolio", tags=["portfolio"])
 
 # Startup event
 @app.on_event("startup")
