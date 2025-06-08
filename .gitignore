@@ -14,6 +14,7 @@ __pycache__/
 **/*.sqlite
 **/*.db
 finances.db
+finances.db.backup
 
 # Ignore environment and configuration files
 .env

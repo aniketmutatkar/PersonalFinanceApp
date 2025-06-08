@@ -55,13 +55,15 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
   });
   const [isReviewSaving, setIsReviewSaving] = useState(false);
 
-  // Mock accounts data - replace with real API call
+  // Accounts data
   const availableAccounts = [
     { id: 1, name: 'Wealthfront Investment', institution: 'Wealthfront' },
     { id: 2, name: 'Schwab Brokerage', institution: 'Schwab' },
     { id: 3, name: 'Acorns', institution: 'Acorns' },
     { id: 4, name: 'Robinhood', institution: 'Robinhood' },
-    { id: 5, name: 'Schwab Roth IRA', institution: 'Schwab' }
+    { id: 5, name: 'Schwab Roth IRA', institution: 'Schwab' },
+    { id: 6, name: 'Wealthfront Cash', institution: 'Wealthfront' }, 
+    { id: 7, name: '401(k) Plan', institution: 'ADP' } 
   ];
 
   // File handling

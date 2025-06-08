@@ -477,6 +477,103 @@ def ensure_upload_directories():
     """Ensure upload directories exist"""
     os.makedirs(UPLOAD_BASE_DIR, exist_ok=True)
     os.makedirs(os.path.join(UPLOAD_BASE_DIR, SINGLE_PAGE_DIR), exist_ok=True)
+    
+def match_account_intelligently(statement_data, all_accounts):
+    """
+    Enhanced account matching based on institution AND account type
+    """
+    if not statement_data.institution:
+        return None, []
+    
+    institution = statement_data.institution.lower()
+    account_type = (statement_data.account_type or "").lower()
+    
+    print(f"🎯 Matching account for: {institution} - {account_type}")
+    
+    # Define specific matching rules based on our patterns
+    matching_rules = [
+        # Schwab Roth - must come FIRST (more specific)
+        {
+            'institution': 'schwab',
+            'account_type_keywords': ['roth ira', 'roth contributory ira', 'contributory ira'],
+            'target_name': 'roth ira'
+        },
+        # Schwab Brokerage - less specific, comes after
+        {
+            'institution': 'schwab',
+            'account_type_keywords': ['schwab one account', 'brokerage', 'investment account'],
+            'target_name': 'schwab brokerage'
+        },
+        # Wealthfront rules
+        {
+            'institution': 'wealthfront',
+            'account_type_keywords': ['individual investment account', 'investment'],
+            'target_name': 'wealthfront investment'
+        },
+        {
+            'institution': 'wealthfront', 
+            'account_type_keywords': ['cash account', 'savings', 'cash'],
+            'target_name': 'wealthfront cash'
+        },
+        # Other institutions (simple matching)
+        {
+            'institution': 'acorns',
+            'account_type_keywords': [],  # Any account type
+            'target_name': 'acorns'
+        },
+        {
+            'institution': 'robinhood',
+            'account_type_keywords': [],
+            'target_name': 'robinhood'
+        }
+    ]
+    
+    # Try rule-based matching first
+    for rule in matching_rules:
+        if rule['institution'] in institution:
+            # If no specific account type rules, match by institution only
+            if not rule['account_type_keywords']:
+                for account in all_accounts:
+                    if rule['target_name'] in account.account_name.lower():
+                        print(f"✅ Rule match: {account.account_name} (institution-only)")
+                        return account, []
+            else:
+                # Check if account type matches any keywords
+                for keyword in rule['account_type_keywords']:
+                    if keyword in account_type:
+                        for account in all_accounts:
+                            if rule['target_name'] in account.account_name.lower():
+                                print(f"✅ Rule match: {account.account_name} (type: {keyword})")
+                                return account, []
+    
+    # Fallback: Try institution-only matching for exact matches
+    exact_matches = []
+    partial_matches = []
+    
+    for account in all_accounts:
+        account_name_lower = account.account_name.lower()
+        account_institution_lower = account.institution.lower()
+        
+        # Exact institution match
+        if institution == account_institution_lower:
+            exact_matches.append(account)
+        # Partial institution match
+        elif institution in account_institution_lower or account_institution_lower in institution:
+            partial_matches.append(account)
+    
+    # Return best match
+    if len(exact_matches) == 1:
+        print(f"✅ Exact institution match: {exact_matches[0].account_name}")
+        return exact_matches[0], []
+    elif exact_matches:
+        print(f"⚠️ Multiple exact matches found: {[acc.account_name for acc in exact_matches]}")
+        return exact_matches[0], exact_matches[1:]  # Return first as match, rest as suggestions
+    elif partial_matches:
+        print(f"⚠️ Partial matches found: {[acc.account_name for acc in partial_matches]}")
+        return None, partial_matches
+    
+    print(f"❌ No matches found for {institution}")
+    return None, []
 
 
 @router.post("/statements/upload", response_model=StatementUploadResponse)
@@ -568,30 +665,22 @@ async def upload_statement_with_page_detection(
         # Step 4: Calculate overall confidence
         overall_confidence = (extraction_confidence + statement_data.confidence_score) / 2
         
-        # Step 5: Try to match account
+        # Step 5: Enhanced account matching
         account = None
         account_suggestions = []
-        
+
         if statement_data.institution:
             all_accounts = portfolio_repo.get_all_accounts()
+            account, suggestions = match_account_intelligently(statement_data, all_accounts)
             
-            # Try exact institution match
-            for acc in all_accounts:
-                if statement_data.institution.lower() == acc.institution.lower():
-                    account = acc
-                    break
-            
-            # If no exact match, get suggestions
-            if not account:
-                for acc in all_accounts:
-                    if (statement_data.institution.lower() in acc.institution.lower() or 
-                        acc.institution.lower() in statement_data.institution.lower()):
-                        account_suggestions.append({
-                            "id": acc.id,
-                            "name": acc.account_name,
-                            "institution": acc.institution,
-                            "match_reason": "institution"
-                        })
+            # Format suggestions for frontend
+            for acc in suggestions:
+                account_suggestions.append({
+                    "id": acc.id,
+                    "name": acc.account_name,
+                    "institution": acc.institution,
+                    "match_reason": "institution_partial"
+                })
         
         # Step 6: Check for duplicates if we have enough data
         duplicate_check_result = None

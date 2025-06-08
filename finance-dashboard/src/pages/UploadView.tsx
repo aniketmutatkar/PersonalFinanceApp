@@ -91,38 +91,6 @@ export default function UnifiedUploadView() {
     }
   }, []);
 
-  // Mock recent uploads data - replace with real API call later
-  const recentUploads = [
-    {
-      filename: 'chase_transactions_jan2024.csv',
-      type: 'Transactions',
-      date: '2 hours ago',
-      details: '245 records',
-      status: 'completed'
-    },
-    {
-      filename: 'wealthfront_statement_dec2023.pdf',
-      type: 'Investment',
-      date: '1 day ago',
-      details: 'Balance: $15,420',
-      status: 'completed'
-    },
-    {
-      filename: 'wells_fargo_statement_jan2024.pdf',
-      type: 'Bank Statement',
-      date: '3 days ago',
-      details: 'Processing failed',
-      status: 'failed'
-    },
-    {
-      filename: 'schwab_brokerage_q4.pdf',
-      type: 'Investment',
-      date: '1 week ago',
-      details: 'Balance: $42,156',
-      status: 'completed'
-    }
-  ];
-
   const handleTypeSelection = (type: UploadType) => {
     setUploadType(type);
     setCurrentStep('upload');
@@ -278,33 +246,6 @@ export default function UnifiedUploadView() {
             </div>
           );
         })}
-      </div>
-
-      {/* Recent Uploads */}
-      <div className="mt-12">
-        <h2 className="text-2xl font-bold text-white mb-6">Recent Uploads</h2>
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
-          <div className="space-y-4">
-            {recentUploads.map((upload, index) => (
-              <div key={index} className="flex items-center justify-between py-3 border-b border-gray-700 last:border-b-0">
-                <div className="flex items-center gap-3">
-                  <FileText className="w-5 h-5 text-gray-400" />
-                  <div>
-                    <div className="text-white font-medium text-sm">{upload.filename}</div>
-                    <div className="text-gray-400 text-xs">{upload.type} • {upload.date} • {upload.details}</div>
-                  </div>
-                </div>
-                <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                  upload.status === 'completed' 
-                    ? 'bg-green-500/20 text-green-400' 
-                    : 'bg-red-500/20 text-red-400'
-                }`}>
-                  {upload.status === 'completed' ? 'Completed' : 'Failed'}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );

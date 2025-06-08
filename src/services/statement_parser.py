@@ -105,7 +105,11 @@ class StatementParser:
             ('wealthfront', [
                 'wealthfront brokerage llc', 'wealthfront advisers', 
                 'monthly statement for march', 'individual investment account',
-                'wealthfront.com', 'support@wealthfront.com'
+                'wealthfront.com', 'support@wealthfront.com',
+                'wealthfront cash account',
+                'investment account' 
+                'wealthfront savings',
+                'cash account'
             ]),
             ('acorns', [
                 'acorns securities llc', 'acorns advisers llc',
@@ -367,15 +371,38 @@ class StatementParser:
         return data
 
     def _extract_schwab(self, text: str) -> StatementData:
-        """Extract data from Schwab statements with precise patterns based on actual OCR output"""
+        """Extract data from Schwab statements with precise patterns"""
         data = StatementData()
         data.extraction_notes = []
         
-        # Account type and number - "Schwab One® Account" and "Account Number 9583-6430"
-        data.account_type = "Schwab One Account"
+        # Enhanced account type detection - CHECK ROTH FIRST!
+        text_lower = text.lower()
         
+        # Check for Roth IRA patterns first (based on the actual statement)
+        if any(phrase in text_lower for phrase in [
+            'roth contributory ira',    # From the header
+            'roth ira',                # General
+            'contributory ira',        # From the statement
+            'roth individual retirement',
+            'ira account'
+        ]):
+            data.account_type = "Roth IRA"
+            data.extraction_notes.append("Detected Roth IRA account type")
+        # Then check for regular brokerage
+        elif any(phrase in text_lower for phrase in [
+            'schwab one', 'brokerage', 'one account'
+        ]):
+            data.account_type = "Schwab One Account"  
+            data.extraction_notes.append("Detected brokerage account type")
+        else:
+            # Default
+            data.account_type = "Investment Account"
+            data.extraction_notes.append("Default investment account type")
+        
+        # Account number - "7085-8463" pattern for Roth IRA
         account_patterns = [
             r'account number\s*(\d{4}-\d{4})',
+            r'(\d{4}-\d{4})',  # Direct pattern match
         ]
         
         for pattern in account_patterns:
@@ -523,15 +550,16 @@ class StatementParser:
         # Account type - distinguish between Investment and Cash accounts
         if 'individual investment account' in text.lower():
             data.account_type = "Individual Investment Account"
-        elif 'cash account' in text.lower():
+        elif any(x in text.lower() for x in ['cash account', 'savings', 'high yield']):
             data.account_type = "Cash Account"
         else:
             data.account_type = "Investment Account"
         
-        # Account number - "Individual Automated Investing Account 8W14VBFY"
+        # Account number patterns
         account_patterns = [
             r'individual automated investing account\s*([A-Z0-9]+)',
             r'account.*?([A-Z0-9]{8})',
+            r'cash account\s*([A-Z0-9]+)',  # ADD THIS
         ]
         
         for pattern in account_patterns:
@@ -541,48 +569,65 @@ class StatementParser:
                 data.extraction_notes.append(f"Found account identifier: {match.group(1)}")
                 break
         
-        # Statement period - "Monthly Statement for March 1 - 31, 2025"
+        # Enhanced date extraction for "March 1 - 31, 2025" format
         period_patterns = [
             r'monthly statement for\s*(\w+\s+\d{1,2}\s*-\s*\d{1,2},\s*\d{4})',
             r'statement for\s*(\w+\s+\d{1,2}\s*-\s*\d{1,2},\s*\d{4})',
+            r'(\w+ \d{1,2} - \d{1,2}, \d{4})',  # ADD THIS
+            r'as of (\w+\s+\d{1,2},\s*\d{4})',  # ADD THIS
         ]
         
         for pattern in period_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 try:
-                    # Parse "March 1 - 31, 2025" format
                     period_str = match.group(1)
-                    if '-' in period_str and ',' in period_str:
+                    logger.info(f"Found period string: '{period_str}'")
+                    
+                    # Parse "March 1 - 31, 2025" or "March 31, 2025" format
+                    if '-' in period_str:
+                        # "March 1 - 31, 2025" format
                         parts = period_str.replace(',', '').split()
                         if len(parts) >= 4:
                             month_str = parts[0]
-                            start_day = parts[1]
-                            end_day = parts[3]  # Skip the '-' 
+                            end_day = parts[3]  # Skip "1", "-", get "31"
                             year_str = parts[4]
                             
-                            start_date = self._parse_date(f"{month_str} {start_day}, {year_str}")
-                            end_date = self._parse_date(f"{month_str} {end_day}, {year_str}")
+                            # Use end date as statement date
+                            end_date_str = f"{month_str} {end_day}, {year_str}"
+                            end_date = self._parse_date(end_date_str)
                             
-                            data.statement_period_start = start_date
+                            if end_date:
+                                data.statement_period_end = end_date
+                                data.extraction_notes.append(f"Found period end: {end_date_str}")
+                                logger.info(f"Parsed end date: {end_date}")
+                                break
+                    else:
+                        # "March 31, 2025" format
+                        end_date = self._parse_date(period_str)
+                        if end_date:
                             data.statement_period_end = end_date
-                            data.extraction_notes.append(f"Found period: {period_str}")
+                            data.extraction_notes.append(f"Found statement date: {period_str}")
                             break
+                            
                 except Exception as e:
-                    logger.warning(f"Failed to parse Wealthfront dates: {e}")
+                    logger.warning(f"Failed to parse Wealthfront date '{period_str}': {e}")
         
-        # Balance extraction - "Starting Balance $6,346.51" and "Ending Balance $6,090.64"
+        # Enhanced balance extraction patterns
         beginning_patterns = [
             r'starting balance\s*\$?([\d,]+\.?\d*)',
-            r'march 1,?\s*2025\s*starting balance\s*\$?([\d,]+\.?\d*)',
+            r'beginning balance\s*\$?([\d,]+\.?\d*)',
+            r'previous balance\s*\$?([\d,]+\.?\d*)',
         ]
         
         ending_patterns = [
             r'ending balance\s*\$?([\d,]+\.?\d*)',
-            r'march 31,?\s*2025\s*ending balance\s*\$?([\d,]+\.?\d*)',
+            r'current balance\s*\$?([\d,]+\.?\d*)',
+            r'final balance\s*\$?([\d,]+\.?\d*)',
+            r'total\s*\$?([\d,]+\.?\d*)',  # For cash accounts
         ]
         
-        # Extract beginning balance
+        # Extract balances
         for pattern in beginning_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
@@ -590,23 +635,22 @@ class StatementParser:
                     amount_str = self._clean_amount_string(match.group(1))
                     if amount_str:
                         data.beginning_balance = Decimal(amount_str)
-                        data.extraction_notes.append(f"Found starting balance: ${amount_str}")
+                        data.extraction_notes.append(f"Found beginning balance: ${amount_str}")
                         break
                 except Exception as e:
-                    logger.warning(f"Failed to parse Wealthfront beginning balance: {e}")
+                    logger.warning(f"Failed to parse beginning balance: {e}")
         
-        # Extract ending balance
         for pattern in ending_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 try:
                     amount_str = self._clean_amount_string(match.group(1))
-                    if amount_str:
+                    if amount_str and float(amount_str) > 10:  # Minimum threshold
                         data.ending_balance = Decimal(amount_str)
                         data.extraction_notes.append(f"Found ending balance: ${amount_str}")
                         break
                 except Exception as e:
-                    logger.warning(f"Failed to parse Wealthfront ending balance: {e}")
+                    logger.warning(f"Failed to parse ending balance: {e}")
         
         return data
 
@@ -639,25 +683,28 @@ class StatementParser:
         return cleaned
 
     def _parse_date(self, date_str: str) -> Optional[date]:
-        """Enhanced date parsing for multiple formats"""
+        """Enhanced date parsing for various formats"""
+        if not date_str:
+            return None
+            
+        # Clean the string
         date_str = date_str.strip()
         
-        # Common date formats
-        date_formats = [
-            '%m/%d/%Y', '%m-%d-%Y', '%m/%d/%y', '%m-%d-%y',
-            '%B %d, %Y', '%b %d, %Y', '%B %d %Y', '%b %d %Y',
-            '%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y',
-            '%m/%d/%Y', '%m-%d-%Y'  # Added duplicates for robustness
+        # Common date formats to try
+        formats = [
+            '%B %d, %Y',      # "March 31, 2025"
+            '%b %d, %Y',      # "Mar 31, 2025"
+            '%m/%d/%Y',       # "03/31/2025"
+            '%Y-%m-%d',       # "2025-03-31"
         ]
         
-        for fmt in date_formats:
+        for fmt in formats:
             try:
-                parsed_date = datetime.strptime(date_str, fmt).date()
-                return parsed_date
+                return datetime.strptime(date_str, fmt).date()
             except ValueError:
                 continue
         
-        logger.warning(f"Could not parse date: {date_str}")
+        logger.warning(f"Could not parse date: '{date_str}'")
         return None
 
     def _calculate_confidence(self, data: StatementData, text: str) -> float:
