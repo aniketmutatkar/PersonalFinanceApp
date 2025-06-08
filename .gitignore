@@ -18,6 +18,13 @@ finances.db
 # Ignore environment and configuration files
 .env
 config.ini
+config.yaml
+
+# Ignore data directories
+old_data/
+raw/
+transformed/
+exports/
 
 # Ignore CSV files
 **/*.csv
@@ -31,16 +38,16 @@ config.ini
 # Ignore PDFs
 **/*.pdf
 
-# React dashbaord
+# React dashboard (fixed typo)
 finance-dashboard/node_modules/
-finance-dashbaord/build/
-finance-dashbaord/.env.local
-finance-dashbaord/.env.development.local
-finance-dashbaord/.env.test.local
-finance-dashbaord/.env.production.local
-finance-dashbaord/npm-debug.log*
-finance-dashbaord/yarn-debug.log*
-finance-dashbaord/yarn-error.log*
+finance-dashboard/build/
+finance-dashboard/.env.local
+finance-dashboard/.env.development.local
+finance-dashboard/.env.test.local
+finance-dashboard/.env.production.local
+finance-dashboard/npm-debug.log*
+finance-dashboard/yarn-debug.log*
+finance-dashboard/yarn-error.log*
 
 # dependencies
 /node_modules
