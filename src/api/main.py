@@ -87,7 +87,7 @@ async def health_check():
     return {"status": "healthy"}
 
 # Import routers
-from src.api.routers import transactions, monthly_summary, categories, budgets, statistics, portfolio
+from src.api.routers import transactions, monthly_summary, categories, budgets, statistics, portfolio, financial_metrics
 
 # Include routers
 app.include_router(transactions.router, prefix="/api/transactions", tags=["transactions"])
@@ -97,6 +97,8 @@ app.include_router(budgets.router, prefix="/api/budgets", tags=["budgets"])
 app.include_router(exports.router, prefix="/api/exports", tags=["exports"])
 app.include_router(statistics.router, prefix="/api/statistics", tags=["statistics"])
 app.include_router(portfolio.router, prefix="/api/portfolio", tags=["portfolio"])
+app.include_router(financial_metrics.router, prefix="/api/financial-metrics", tags=["financial-metrics"])
+
 
 # Startup event
 @app.on_event("startup")

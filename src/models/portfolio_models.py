@@ -251,6 +251,39 @@ class StatementUpload:
         self.processing_status = 'saved'
         self.reviewed_by_user = True
 
+@dataclass
+class BankBalance:
+    """Represents a bank account balance entry"""
+    account_name: str
+    statement_month: str  # YYYY-MM format
+    beginning_balance: Decimal
+    ending_balance: Decimal
+    statement_date: date
+    account_number: Optional[str] = None
+    deposits_additions: Optional[Decimal] = None
+    withdrawals_subtractions: Optional[Decimal] = None
+    data_source: str = 'pdf_statement'
+    confidence_score: Decimal = Decimal('1.0')
+    notes: Optional[str] = None
+    id: Optional[int] = None
+    created_at: Optional[date] = None
+    
+    def __post_init__(self):
+        """Convert values to Decimal where needed"""
+        if not isinstance(self.beginning_balance, Decimal):
+            self.beginning_balance = Decimal(str(self.beginning_balance))
+        
+        if not isinstance(self.ending_balance, Decimal):
+            self.ending_balance = Decimal(str(self.ending_balance))
+        
+        if self.deposits_additions is not None and not isinstance(self.deposits_additions, Decimal):
+            self.deposits_additions = Decimal(str(self.deposits_additions))
+            
+        if self.withdrawals_subtractions is not None and not isinstance(self.withdrawals_subtractions, Decimal):
+            self.withdrawals_subtractions = Decimal(str(self.withdrawals_subtractions))
+        
+        if not isinstance(self.confidence_score, Decimal):
+            self.confidence_score = Decimal(str(self.confidence_score))
 
 # Account name mapping for transaction integration
 ACCOUNT_TRANSACTION_MAPPING = {

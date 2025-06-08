@@ -243,6 +243,56 @@ def seed_investment_accounts():
     finally:
         session.close()
 
+class BankBalanceModel(Base):
+    """SQLAlchemy model for Bank Account Balances"""
+    __tablename__ = 'bank_balances'
+    
+    id = Column(Integer, primary_key=True)
+    account_name = Column(String, nullable=False)  # 'Wells Fargo Checking', 'Wells Fargo Savings'
+    account_number = Column(String)  # '3207122866', '3218415499'
+    statement_month = Column(String, nullable=False)  # '2025-05' (YYYY-MM format)
+    beginning_balance = Column(Float, nullable=False)  # 22782.90
+    ending_balance = Column(Float, nullable=False)     # 25736.30
+    deposits_additions = Column(Float)                  # 8747.54
+    withdrawals_subtractions = Column(Float)           # 5794.14
+    statement_date = Column(Date, nullable=False)      # 2025-05-31
+    data_source = Column(String, default='pdf_statement')  # 'pdf_statement', 'excel_import'
+    confidence_score = Column(Float, default=1.0)
+    notes = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<BankBalance(account='{self.account_name}', date='{self.statement_date}', balance={self.ending_balance})>"
+    
+def add_bank_balance_constraints():
+    """Add database constraints for bank_balances table"""
+    session = get_db_session()
+    try:
+        # Add unique constraint for bank_balances (account_name, statement_month)
+        session.execute(text("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_bank_balances_unique 
+        ON bank_balances(account_name, statement_month)
+        """))
+        
+        # Add index for faster queries
+        session.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_bank_balances_date 
+        ON bank_balances(statement_date)
+        """))
+        
+        session.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_bank_balances_account 
+        ON bank_balances(account_name)
+        """))
+        
+        session.commit()
+        print("Added bank balance database constraints and indexes")
+        
+    except Exception as e:
+        session.rollback()
+        print(f"Warning: Could not add bank balance constraints: {str(e)}")
+    finally:
+        session.close()
 
 def init_database(categories):
     """Initialize the SQLite database with required tables"""
@@ -260,11 +310,13 @@ def init_database(categories):
     # Add portfolio constraints
     add_portfolio_constraints()
     
-    # NEW: Add statement uploads enhancements
+    # NEW: Add bank balance constraints
+    add_bank_balance_constraints()
+    
+    # Add statement uploads enhancements
     add_statement_uploads_enhancements()
     
-    print("Database initialized successfully with enhanced OCR support.")
-
+    print("Database initialized successfully with bank balance support.")
 
 def add_portfolio_constraints():
     """Add database constraints for portfolio tables"""
