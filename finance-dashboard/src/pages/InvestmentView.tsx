@@ -14,10 +14,12 @@ import AccountComparison from '../components/investments/AccountComparison';
 import InvestmentPatterns from '../components/investments/InvestmentPatterns';
 import PortfolioValueChart from '../components/portfolio/PortfolioValueChart';
 import ManualBalanceEntry from '../components/portfolio/ManualBalanceEntry';
+import PDFStatementUpload from '../components/portfolio/PDFStatementUpload';
 
 export default function InvestmentView() {
   const [selectedPeriod, setSelectedPeriod] = useState("all");
   const [showManualEntry, setShowManualEntry] = useState(false);
+  const [showPDFUpload, setShowPDFUpload] = useState(false);
   
   // Portfolio Performance Data (NEW)
   const { 
@@ -69,14 +71,24 @@ export default function InvestmentView() {
             </p>
           </div>
           
-          {/* Manual Balance Entry Button */}
-          <button
-            onClick={() => setShowManualEntry(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-          >
-            <span className="text-sm">📊</span>
-            <span>Add Balance</span>
-          </button>
+          {/* Enhanced Add Balance Section */}
+          <div className="flex space-x-3">
+            <button
+              onClick={() => setShowManualEntry(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+            >
+              <span className="text-sm">📊</span>
+              <span>Manual Entry</span>
+            </button>
+            
+            <button
+              onClick={() => setShowPDFUpload(true)}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+            >
+              <span className="text-sm">📄</span>
+              <span>Upload PDF</span>
+            </button>
+          </div>
         </div>
         
         {/* Portfolio Summary Bar */}
@@ -331,6 +343,16 @@ export default function InvestmentView() {
           // Modal will auto-close after success message
         }}
       />
+
+      {/* PDF Statement Upload */}
+      <PDFStatementUpload 
+        isOpen={showPDFUpload}
+        onClose={() => setShowPDFUpload(false)}
+        onBalanceAdded={() => {
+          console.log('Balance added from PDF!');
+          // Modal will auto-close after success
+        }}
+      />
       
       {/* Development Note */}
       <div className="bg-blue-900/10 border border-blue-800/20 rounded-lg p-4">
@@ -346,4 +368,4 @@ export default function InvestmentView() {
       </div>
     </div>
   );
-}
+  }

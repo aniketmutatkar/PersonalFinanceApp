@@ -8,6 +8,11 @@ from datetime import datetime
 from pydantic import BaseModel, validator
 from typing import Optional, Dict, Union
 from src.models.portfolio_models import PortfolioBalance, DataSource
+import tempfile
+import os
+from fastapi import UploadFile, File
+from src.services.pdf_processor import PDFProcessor
+from src.services.statement_parser import StatementParser
 
 from src.api.dependencies import get_portfolio_service, get_portfolio_repository
 from src.services.portfolio_service import PortfolioService
@@ -172,6 +177,20 @@ class ManualBalanceSuccessResponse(BaseModel):
     balance: Dict
     message: str
 
+class StatementUploadResponse(BaseModel):
+    statement_id: Optional[int] = None
+    extracted_data: Dict
+    requires_review: bool
+    confidence_score: float
+    message: str
+
+class StatementReviewRequest(BaseModel):
+    account_id: int
+    balance_date: str
+    balance_amount: float
+    notes: Optional[str] = None
+    confidence_score: float
+    original_filename: str
 
 @router.get("/overview", response_model=PortfolioOverviewResponse)
 async def get_portfolio_overview(
@@ -439,3 +458,190 @@ async def add_manual_balance(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error adding manual balance: {str(e)}")
+    
+@router.post("/statements/upload", response_model=StatementUploadResponse)
+async def upload_statement_for_ocr(
+    file: UploadFile = File(...),
+    portfolio_repo: PortfolioRepository = Depends(get_portfolio_repository)
+):
+    """
+    Upload PDF statement for OCR processing and balance extraction
+    """
+    try:
+        # Validate file type
+        if not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported")
+        
+        # Create temporary file for processing
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            # Write uploaded content to temp file
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+        
+        try:
+            # Step 1: Extract text from PDF
+            pdf_processor = PDFProcessor()
+            extracted_text, extraction_confidence = pdf_processor.extract_text(temp_file_path)
+            
+            if not extracted_text or extraction_confidence < 0.3:
+                return StatementUploadResponse(
+                    extracted_data={},
+                    requires_review=True,
+                    confidence_score=extraction_confidence,
+                    message="OCR extraction failed or very low confidence. Manual entry recommended."
+                )
+            
+            # Step 2: Parse statement data
+            statement_parser = StatementParser()
+            statement_data = statement_parser.parse_statement(extracted_text)
+            
+            # Step 3: Calculate overall confidence
+            overall_confidence = (extraction_confidence + statement_data.confidence_score) / 2
+            
+            # Step 4: Try to map to account
+            account = None
+            account_suggestions = []
+
+            if statement_data.institution:
+                # Get all accounts
+                all_accounts = portfolio_repo.get_all_accounts()
+                
+                # Try exact institution match first
+                for acc in all_accounts:
+                    if statement_data.institution.lower() == acc.institution.lower():
+                        account = acc
+                        break
+                
+                # If no exact match, try partial institution match
+                if not account:
+                    for acc in all_accounts:
+                        if statement_data.institution.lower() in acc.institution.lower() or acc.institution.lower() in statement_data.institution.lower():
+                            # For single-account institutions (Acorns, Robinhood), just match by institution
+                            if acc.institution.lower() in ['acorns', 'robinhood']:
+                                account = acc
+                                break
+                            # For multi-account institutions (Schwab, Wealthfront), try account type matching
+                            elif statement_data.account_type:
+                                if any(word in acc.account_name.lower() for word in statement_data.account_type.lower().split()):
+                                    account = acc
+                                    break
+                                else:
+                                    account_suggestions.append({
+                                        "id": acc.id,
+                                        "name": acc.account_name,
+                                        "institution": acc.institution,
+                                        "match_reason": "institution"
+                                    })
+                            else:
+                                # Default to first match for same institution
+                                account = acc
+                                break
+            
+            # Step 5: Prepare response data
+            extracted_data = {
+                "institution": statement_data.institution,
+                "account_type": statement_data.account_type,
+                "account_number": statement_data.account_number,
+                "statement_period_start": statement_data.statement_period_start.isoformat() if statement_data.statement_period_start else None,
+                "statement_period_end": statement_data.statement_period_end.isoformat() if statement_data.statement_period_end else None,
+                "beginning_balance": float(statement_data.beginning_balance) if statement_data.beginning_balance else None,
+                "ending_balance": float(statement_data.ending_balance) if statement_data.ending_balance else None,
+                "matched_account": {
+                    "id": account.id,
+                    "name": account.account_name,
+                    "institution": account.institution
+                } if account else None,
+                "account_suggestions": account_suggestions,
+                "extraction_notes": statement_data.extraction_notes or []
+            }
+            
+            # Step 6: Determine if review is needed
+            requires_review = (
+                overall_confidence < 0.8 or  # Low confidence
+                not statement_data.ending_balance or  # No balance found
+                not account or  # No account match
+                not statement_data.statement_period_end  # No date found
+            )
+            
+            message = "Statement processed successfully"
+            if requires_review:
+                if overall_confidence < 0.6:
+                    message = "Low confidence extraction - please review all fields"
+                elif not statement_data.ending_balance:
+                    message = "Could not extract balance amount - manual entry required"
+                elif not account:
+                    message = "Could not match to existing account - please select manually"
+                else:
+                    message = "Please review extracted data before saving"
+            else:
+                message = "High confidence extraction - ready to save"
+            
+            return StatementUploadResponse(
+                extracted_data=extracted_data,
+                requires_review=requires_review,
+                confidence_score=overall_confidence,
+                message=message
+            )
+            
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass
+                
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing statement: {str(e)}")
+
+@router.post("/statements/confirm")
+async def confirm_statement_extraction(
+    statement_data: StatementReviewRequest,
+    portfolio_repo: PortfolioRepository = Depends(get_portfolio_repository)
+):
+    """
+    Confirm and save statement data after user review
+    """
+    try:
+        # Convert to balance entry (reuse manual balance logic)
+        balance_date = datetime.strptime(statement_data.balance_date, '%Y-%m-%d').date()
+        
+        # Check if account exists
+        account = portfolio_repo.get_account_by_id(statement_data.account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail=f"Account {statement_data.account_id} not found")
+        
+        # Check for existing balance
+        existing = portfolio_repo.check_balance_exists(statement_data.account_id, balance_date)
+        
+        # Create balance entry
+        new_balance = PortfolioBalance(
+            account_id=statement_data.account_id,
+            balance_date=balance_date,
+            balance_amount=Decimal(str(statement_data.balance_amount)),
+            data_source=DataSource.PDF_STATEMENT,
+            confidence_score=Decimal(str(statement_data.confidence_score)),
+            notes=f"PDF: {statement_data.original_filename}" + (f" | {statement_data.notes}" if statement_data.notes else "")
+        )
+        
+        # Save balance
+        saved_balance = portfolio_repo.save_balance(new_balance)
+        
+        action = "updated" if existing else "added"
+        
+        return {
+            "success": True,
+            "balance": {
+                "id": saved_balance.id,
+                "account_id": saved_balance.account_id,
+                "balance_date": saved_balance.balance_date.isoformat(),
+                "balance_amount": float(saved_balance.balance_amount),
+                "data_source": saved_balance.data_source.value,
+                "confidence_score": float(saved_balance.confidence_score),
+                "account_name": account.account_name
+            },
+            "message": f"Successfully {action} balance from PDF statement"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving statement data: {str(e)}")

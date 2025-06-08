@@ -1,6 +1,6 @@
 // src/components/portfolio/ManualBalanceEntry.tsx
 import React, { useState, useEffect } from 'react';
-import { useAllAccounts, useAddManualBalance } from '../../hooks/useApiData';
+import { useAllAccounts } from '../../hooks/useApiData';
 import { useQueryClient } from '@tanstack/react-query';
 
 interface ManualBalanceEntryProps {
@@ -36,7 +36,6 @@ export default function ManualBalanceEntry({
   const [successMessage, setSuccessMessage] = useState('');
 
   const { data: accountsResponse, isLoading: accountsLoading } = useAllAccounts();
-  const addBalanceMutation = useAddManualBalance();
   const queryClient = useQueryClient();
 
   // Reset form when modal opens/closes
@@ -61,13 +60,6 @@ export default function ManualBalanceEntry({
     setSuccessMessage('');
 
     try {
-      const formData = new FormData();
-      formData.append('account_id', selectedAccountId.toString());
-      formData.append('balance_date', balanceDate);
-      formData.append('balance_amount', balanceAmount);
-      if (notes) formData.append('notes', notes);
-      if (forceOverride) formData.append('force_override', 'true');
-
       const url = forceOverride 
         ? `/api/portfolio/balances?force_override=true`
         : `/api/portfolio/balances`;
@@ -290,7 +282,7 @@ export default function ManualBalanceEntry({
             {/* Amount */}
             <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Endling Balance
+                    Ending Balance
                     <span className="text-xs text-gray-400 block mt-1">
                     Ending value as of the date above
                     </span>
