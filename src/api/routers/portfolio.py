@@ -10,13 +10,17 @@ from typing import Optional, Dict, Union
 from src.models.portfolio_models import PortfolioBalance, DataSource
 import tempfile
 import os
+import uuid
 from fastapi import UploadFile, File
-from src.services.pdf_processor import PDFProcessor
-from src.services.statement_parser import StatementParser
+from fastapi.responses import FileResponse
 
 from src.api.dependencies import get_portfolio_service, get_portfolio_repository
 from src.services.portfolio_service import PortfolioService
 from src.repositories.portfolio_repository import PortfolioRepository
+from src.services.duplicate_detector import MonthlyDuplicateDetector
+from src.models.portfolio_models import StatementUpload
+from src.services.pdf_processor import PDFProcessor
+from src.services.statement_parser import StatementParser
 
 router = APIRouter()
 
@@ -178,19 +182,25 @@ class ManualBalanceSuccessResponse(BaseModel):
     message: str
 
 class StatementUploadResponse(BaseModel):
-    statement_id: Optional[int] = None
+    statement_id: int  # NEW: Always save to statement_uploads first
     extracted_data: Dict
-    requires_review: bool
     confidence_score: float
+    relevant_page: int  # NEW: Which page has the data
+    total_pages: int    # NEW: Total pages in PDF
+    requires_review: bool
     message: str
+    # NEW: User choice workflow
+    can_quick_save: bool
+    duplicate_check: Optional[Dict] = None
 
 class StatementReviewRequest(BaseModel):
     account_id: int
-    balance_date: str
+    balance_date: str  # YYYY-MM-DD
     balance_amount: float
     notes: Optional[str] = None
-    confidence_score: float
-    original_filename: str
+    
+class QuickSaveRequest(BaseModel):
+    confirm_duplicates: bool = False  # If user wants to override duplicates
 
 @router.get("/overview", response_model=PortfolioOverviewResponse)
 async def get_portfolio_overview(
@@ -459,139 +469,223 @@ async def add_manual_balance(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error adding manual balance: {str(e)}")
     
+# Storage configuration
+UPLOAD_BASE_DIR = "uploaded_statements"
+SINGLE_PAGE_DIR = "single_pages"
+
+def ensure_upload_directories():
+    """Ensure upload directories exist"""
+    os.makedirs(UPLOAD_BASE_DIR, exist_ok=True)
+    os.makedirs(os.path.join(UPLOAD_BASE_DIR, SINGLE_PAGE_DIR), exist_ok=True)
+
+
 @router.post("/statements/upload", response_model=StatementUploadResponse)
-async def upload_statement_for_ocr(
+async def upload_statement_with_page_detection(
     file: UploadFile = File(...),
     portfolio_repo: PortfolioRepository = Depends(get_portfolio_repository)
 ):
     """
-    Upload PDF statement for OCR processing and balance extraction
+    Enhanced upload with page detection and user choice workflow
+    
+    New Flow:
+    1. Upload PDF → Save full PDF + detect best page
+    2. Extract single page → Process OCR on best page
+    3. Save to statement_uploads → Return options for user
+    4. User chooses: Quick Save or Review
     """
     try:
-        # Validate file type
+        # Validate file
         if not file.filename.lower().endswith('.pdf'):
             raise HTTPException(status_code=400, detail="Only PDF files are supported")
         
-        # Create temporary file for processing
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-            # Write uploaded content to temp file
-            content = await file.read()
-            temp_file.write(content)
-            temp_file_path = temp_file.name
+        ensure_upload_directories()
         
-        try:
-            # Step 1: Extract text from PDF
-            pdf_processor = PDFProcessor()
-            extracted_text, extraction_confidence = pdf_processor.extract_text(temp_file_path)
-            
-            if not extracted_text or extraction_confidence < 0.3:
-                return StatementUploadResponse(
-                    extracted_data={},
-                    requires_review=True,
-                    confidence_score=extraction_confidence,
-                    message="OCR extraction failed or very low confidence. Manual entry recommended."
-                )
-            
-            # Step 2: Parse statement data
-            statement_parser = StatementParser()
-            statement_data = statement_parser.parse_statement(extracted_text)
-            
-            # Step 3: Calculate overall confidence
-            overall_confidence = (extraction_confidence + statement_data.confidence_score) / 2
-            
-            # Step 4: Try to map to account
-            account = None
-            account_suggestions = []
-
-            if statement_data.institution:
-                # Get all accounts
-                all_accounts = portfolio_repo.get_all_accounts()
-                
-                # Try exact institution match first
-                for acc in all_accounts:
-                    if statement_data.institution.lower() == acc.institution.lower():
-                        account = acc
-                        break
-                
-                # If no exact match, try partial institution match
-                if not account:
-                    for acc in all_accounts:
-                        if statement_data.institution.lower() in acc.institution.lower() or acc.institution.lower() in statement_data.institution.lower():
-                            # For single-account institutions (Acorns, Robinhood), just match by institution
-                            if acc.institution.lower() in ['acorns', 'robinhood']:
-                                account = acc
-                                break
-                            # For multi-account institutions (Schwab, Wealthfront), try account type matching
-                            elif statement_data.account_type:
-                                if any(word in acc.account_name.lower() for word in statement_data.account_type.lower().split()):
-                                    account = acc
-                                    break
-                                else:
-                                    account_suggestions.append({
-                                        "id": acc.id,
-                                        "name": acc.account_name,
-                                        "institution": acc.institution,
-                                        "match_reason": "institution"
-                                    })
-                            else:
-                                # Default to first match for same institution
-                                account = acc
-                                break
-            
-            # Step 5: Prepare response data
-            extracted_data = {
-                "institution": statement_data.institution,
-                "account_type": statement_data.account_type,
-                "account_number": statement_data.account_number,
-                "statement_period_start": statement_data.statement_period_start.isoformat() if statement_data.statement_period_start else None,
-                "statement_period_end": statement_data.statement_period_end.isoformat() if statement_data.statement_period_end else None,
-                "beginning_balance": float(statement_data.beginning_balance) if statement_data.beginning_balance else None,
-                "ending_balance": float(statement_data.ending_balance) if statement_data.ending_balance else None,
-                "matched_account": {
-                    "id": account.id,
-                    "name": account.account_name,
-                    "institution": account.institution
-                } if account else None,
-                "account_suggestions": account_suggestions,
-                "extraction_notes": statement_data.extraction_notes or []
-            }
-            
-            # Step 6: Determine if review is needed
-            requires_review = (
-                overall_confidence < 0.8 or  # Low confidence
-                not statement_data.ending_balance or  # No balance found
-                not account or  # No account match
-                not statement_data.statement_period_end  # No date found
+        # Create unique filename to avoid conflicts
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_id = str(uuid.uuid4())[:8]
+        safe_filename = f"{timestamp}_{unique_id}_{file.filename}"
+        full_pdf_path = os.path.join(UPLOAD_BASE_DIR, safe_filename)
+        
+        # Save full PDF
+        with open(full_pdf_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        print(f"📄 Saved full PDF: {full_pdf_path}")
+        
+        # Check for filename duplicates first
+        duplicate_detector = MonthlyDuplicateDetector()
+        filename_check = duplicate_detector.check_filename_duplicates(file.filename)
+        
+        # Step 1: Extract text with page detection
+        pdf_processor = PDFProcessor()
+        extracted_text, extraction_confidence, relevant_page, total_pages = pdf_processor.extract_with_page_detection(full_pdf_path)
+        
+        print(f"📊 OCR Results: confidence={extraction_confidence:.2f}, relevant_page={relevant_page}, total_pages={total_pages}")
+        
+        if not extracted_text or extraction_confidence < 0.2:
+            # Save failed processing record
+            failed_upload = StatementUpload(
+                original_filename=file.filename,
+                file_path=full_pdf_path,
+                total_pages=total_pages,
+                processing_status='failed',
+                processing_error="OCR extraction failed or very low confidence",
+                raw_extracted_text=extracted_text[:1000] if extracted_text else ""
             )
             
-            message = "Statement processed successfully"
-            if requires_review:
-                if overall_confidence < 0.6:
-                    message = "Low confidence extraction - please review all fields"
-                elif not statement_data.ending_balance:
-                    message = "Could not extract balance amount - manual entry required"
-                elif not account:
-                    message = "Could not match to existing account - please select manually"
-                else:
-                    message = "Please review extracted data before saving"
-            else:
-                message = "High confidence extraction - ready to save"
+            saved_upload = portfolio_repo.save_statement_upload(failed_upload)
             
             return StatementUploadResponse(
-                extracted_data=extracted_data,
-                requires_review=requires_review,
-                confidence_score=overall_confidence,
-                message=message
+                statement_id=saved_upload.id,
+                extracted_data={},
+                confidence_score=extraction_confidence,
+                relevant_page=relevant_page,
+                total_pages=total_pages,
+                requires_review=True,
+                message="OCR extraction failed. Manual entry recommended.",
+                can_quick_save=False
             )
+        
+        # Step 2: Extract single page PDF
+        single_page_filename = f"page_{relevant_page}_{safe_filename}"
+        single_page_path = os.path.join(UPLOAD_BASE_DIR, SINGLE_PAGE_DIR, single_page_filename)
+        
+        page_extraction_success = pdf_processor.extract_single_page_pdf(
+            full_pdf_path, relevant_page, single_page_path
+        )
+        
+        if page_extraction_success:
+            print(f"📑 Extracted single page: {single_page_path}")
+        else:
+            print(f"⚠️ Failed to extract single page, will use full PDF for review")
+            single_page_path = None
+        
+        # Step 3: Parse statement data
+        statement_parser = StatementParser()
+        statement_data = statement_parser.parse_statement(extracted_text)
+        
+        # Step 4: Calculate overall confidence
+        overall_confidence = (extraction_confidence + statement_data.confidence_score) / 2
+        
+        # Step 5: Try to match account
+        account = None
+        account_suggestions = []
+        
+        if statement_data.institution:
+            all_accounts = portfolio_repo.get_all_accounts()
             
-        finally:
-            # Clean up temporary file
-            try:
-                os.unlink(temp_file_path)
-            except:
-                pass
-                
+            # Try exact institution match
+            for acc in all_accounts:
+                if statement_data.institution.lower() == acc.institution.lower():
+                    account = acc
+                    break
+            
+            # If no exact match, get suggestions
+            if not account:
+                for acc in all_accounts:
+                    if (statement_data.institution.lower() in acc.institution.lower() or 
+                        acc.institution.lower() in statement_data.institution.lower()):
+                        account_suggestions.append({
+                            "id": acc.id,
+                            "name": acc.account_name,
+                            "institution": acc.institution,
+                            "match_reason": "institution"
+                        })
+        
+        # Step 6: Check for duplicates if we have enough data
+        duplicate_check_result = None
+        if account and statement_data.ending_balance and statement_data.statement_period_end:
+            duplicate_check_result = duplicate_detector.check_monthly_duplicates(
+                account.id,
+                statement_data.statement_period_end,
+                statement_data.ending_balance
+            )
+        
+        # Step 7: Save to statement_uploads
+        statement_upload = StatementUpload(
+            account_id=account.id if account else None,
+            statement_date=statement_data.statement_period_end,
+            original_filename=file.filename,
+            file_path=full_pdf_path,
+            relevant_page_number=relevant_page,
+            page_pdf_path=single_page_path,
+            total_pages=total_pages,
+            raw_extracted_text=extracted_text[:5000],  # Limit size
+            extracted_balance=float(statement_data.ending_balance) if statement_data.ending_balance else None,
+            confidence_score=overall_confidence,
+            processing_status='processed',
+            processed_timestamp=datetime.now()
+        )
+        
+        saved_upload = portfolio_repo.save_statement_upload(statement_upload)
+        print(f"💾 Saved statement upload: ID {saved_upload.id}")
+        
+        # Step 8: Prepare response data
+        extracted_data = {
+            "institution": statement_data.institution,
+            "account_type": statement_data.account_type,
+            "account_number": statement_data.account_number,
+            "statement_period_start": statement_data.statement_period_start.isoformat() if statement_data.statement_period_start else None,
+            "statement_period_end": statement_data.statement_period_end.isoformat() if statement_data.statement_period_end else None,
+            "beginning_balance": float(statement_data.beginning_balance) if statement_data.beginning_balance else None,
+            "ending_balance": float(statement_data.ending_balance) if statement_data.ending_balance else None,
+            "matched_account": {
+                "id": account.id,
+                "name": account.account_name,
+                "institution": account.institution
+            } if account else None,
+            "account_suggestions": account_suggestions,
+            "extraction_notes": statement_data.extraction_notes or []
+        }
+        
+        # Step 9: Determine workflow recommendations
+        can_quick_save = (
+            overall_confidence >= 0.6 and  # Reasonable confidence
+            statement_data.ending_balance is not None and  # Has balance
+            account is not None and  # Account matched
+            statement_data.statement_period_end is not None  # Has date (explicit None check)
+        )
+        
+        requires_review = (
+            overall_confidence < 0.8 or  # Lower confidence needs review
+            not statement_data.ending_balance or  # No balance found
+            not account or  # No account match
+            not statement_data.statement_period_end or  # No date
+            (duplicate_check_result and duplicate_check_result.is_duplicate and 
+             duplicate_check_result.recommendation in ['require_confirmation', 'manual_review'])
+        )
+        
+        # Determine message
+        if can_quick_save and not requires_review:
+            message = f"High confidence extraction ({overall_confidence:.1%}). Ready for quick save or review."
+        elif can_quick_save:
+            message = f"Good extraction ({overall_confidence:.1%}) but review recommended due to conflicts."
+        else:
+            message = "Manual review required due to low confidence or missing data."
+        
+        return StatementUploadResponse(
+            statement_id=saved_upload.id,
+            extracted_data=extracted_data,
+            confidence_score=overall_confidence,
+            relevant_page=relevant_page,
+            total_pages=total_pages,
+            requires_review=requires_review,
+            message=message,
+            can_quick_save=can_quick_save,
+            duplicate_check=duplicate_check_result.__dict__ if duplicate_check_result else None
+        )
+        
     except Exception as e:
+        # Clean up files on error
+        try:
+            if 'full_pdf_path' in locals() and os.path.exists(full_pdf_path):
+                os.unlink(full_pdf_path)
+            if 'single_page_path' in locals() and single_page_path and os.path.exists(single_page_path):
+                os.unlink(single_page_path)
+        except:
+            pass
+        
         raise HTTPException(status_code=500, detail=f"Error processing statement: {str(e)}")
 
 @router.post("/statements/confirm")
@@ -645,3 +739,177 @@ async def confirm_statement_extraction(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error saving statement data: {str(e)}")
+    
+@router.get("/statements/{statement_id}/page-pdf")
+async def serve_single_page_pdf(
+    statement_id: int,
+    portfolio_repo: PortfolioRepository = Depends(get_portfolio_repository)
+):
+    """
+    Serve the single page PDF for review interface
+    """
+    try:
+        statement = portfolio_repo.get_statement_upload(statement_id)
+        if not statement:
+            raise HTTPException(status_code=404, detail="Statement not found")
+        
+        # Use single page PDF if available, otherwise full PDF
+        pdf_path = statement.page_pdf_path if statement.page_pdf_path else statement.file_path
+        
+        if not pdf_path or not os.path.exists(pdf_path):
+            raise HTTPException(status_code=404, detail="PDF file not found")
+        
+        return FileResponse(
+            pdf_path,
+            media_type="application/pdf"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error serving PDF: {str(e)}")
+
+
+@router.post("/statements/{statement_id}/quick-save")
+async def quick_save_statement(
+    statement_id: int,
+    request: QuickSaveRequest,
+    portfolio_repo: PortfolioRepository = Depends(get_portfolio_repository)
+):
+    """
+    Quick save statement using extracted data without review
+    """
+    try:
+        # Get statement upload record
+        statement = portfolio_repo.get_statement_upload(statement_id)
+        if not statement:
+            raise HTTPException(status_code=404, detail="Statement not found")
+        
+        if not statement.account_id or not statement.extracted_balance or not statement.statement_date:
+            raise HTTPException(status_code=400, detail="Insufficient extracted data for quick save")
+        
+        # Check for duplicates again
+        duplicate_detector = MonthlyDuplicateDetector()
+        duplicate_result = duplicate_detector.check_monthly_duplicates(
+            statement.account_id,
+            statement.statement_date,
+            Decimal(str(statement.extracted_balance))
+        )
+        
+        # Handle duplicates based on user confirmation
+        if duplicate_result.is_duplicate and not request.confirm_duplicates:
+            if duplicate_result.recommendation == 'block_save':
+                raise HTTPException(
+                    status_code=409, 
+                    detail="Duplicate balance detected. Cannot save identical balance."
+                )
+            else:
+                # Return conflict for user confirmation
+                return {
+                    "success": False,
+                    "requires_confirmation": True,
+                    "duplicate_info": duplicate_result.__dict__,
+                    "message": duplicate_result.message
+                }
+        
+        # Create portfolio balance
+        new_balance = PortfolioBalance(
+            account_id=statement.account_id,
+            balance_date=statement.statement_date,
+            balance_amount=Decimal(str(statement.extracted_balance)),
+            data_source=DataSource.PDF_STATEMENT,
+            confidence_score=Decimal(str(statement.confidence_score)),
+            notes=f"Quick save from PDF: {statement.original_filename}"
+        )
+        
+        # Save balance
+        saved_balance = portfolio_repo.save_balance(new_balance)
+        
+        # Update statement as processed
+        portfolio_repo.mark_statement_processed(statement_id)
+        
+        return {
+            "success": True,
+            "balance": {
+                "id": saved_balance.id,
+                "account_id": saved_balance.account_id,
+                "balance_date": saved_balance.balance_date.isoformat(),
+                "balance_amount": float(saved_balance.balance_amount),
+                "data_source": saved_balance.data_source.value,
+                "confidence_score": float(saved_balance.confidence_score)
+            },
+            "message": "Balance saved successfully via quick save"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error in quick save: {str(e)}")
+
+
+@router.post("/statements/{statement_id}/review")
+async def save_reviewed_statement(
+    statement_id: int,
+    review_data: StatementReviewRequest,
+    portfolio_repo: PortfolioRepository = Depends(get_portfolio_repository)
+):
+    """
+    Save statement after user review and potential edits
+    """
+    try:
+        # Get statement upload record
+        statement = portfolio_repo.get_statement_upload(statement_id)
+        if not statement:
+            raise HTTPException(status_code=404, detail="Statement not found")
+        
+        # Validate account exists
+        account = portfolio_repo.get_account_by_id(review_data.account_id)
+        if not account:
+            raise HTTPException(status_code=404, detail=f"Account {review_data.account_id} not found")
+        
+        # Parse date
+        balance_date = datetime.strptime(review_data.balance_date, '%Y-%m-%d').date()
+        
+        # Check for duplicates with the reviewed data
+        duplicate_detector = MonthlyDuplicateDetector()
+        duplicate_result = duplicate_detector.check_monthly_duplicates(
+            review_data.account_id,
+            balance_date,
+            Decimal(str(review_data.balance_amount))
+        )
+        
+        # Create balance entry
+        new_balance = PortfolioBalance(
+            account_id=review_data.account_id,
+            balance_date=balance_date,
+            balance_amount=Decimal(str(review_data.balance_amount)),
+            data_source=DataSource.PDF_STATEMENT,
+            confidence_score=Decimal(str(statement.confidence_score)),
+            notes=f"Reviewed PDF: {statement.original_filename}" + (f" | {review_data.notes}" if review_data.notes else "")
+        )
+        
+        # Save balance (repository handles duplicates)
+        saved_balance = portfolio_repo.save_balance(new_balance)
+        
+        # Mark statement as reviewed and processed
+        portfolio_repo.mark_statement_reviewed(statement_id, reviewed_by_user=True)
+        
+        return {
+            "success": True,
+            "balance": {
+                "id": saved_balance.id,
+                "account_id": saved_balance.account_id,
+                "balance_date": saved_balance.balance_date.isoformat(),
+                "balance_amount": float(saved_balance.balance_amount),
+                "data_source": saved_balance.data_source.value,
+                "confidence_score": float(saved_balance.confidence_score),
+                "account_name": account.account_name
+            },
+            "duplicate_info": duplicate_result.__dict__ if duplicate_result and duplicate_result.is_duplicate else None,
+            "message": f"Successfully saved reviewed balance for {account.account_name}"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving reviewed statement: {str(e)}")

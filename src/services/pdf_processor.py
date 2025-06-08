@@ -8,7 +8,7 @@ Uses multiple extraction methods with fallback hierarchy
 import os
 import tempfile
 import logging
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict
 from decimal import Decimal
 from datetime import date
 
@@ -21,13 +21,12 @@ except ImportError as e:
     missing_lib = str(e).split("'")[1]
     raise ImportError(f"Missing dependency: {missing_lib}. Run: pip install {missing_lib}")
 
-# Try to import PyMuPDF (optional, for better OCR)
 try:
-    import fitz
+    import fitz  # PyMuPDF
     HAS_PYMUPDF = True
 except ImportError:
     HAS_PYMUPDF = False
-    print("Warning: PyMuPDF not available. OCR will use basic PDF to image conversion.")
+    print("Warning: PyMuPDF not available. Page extraction will be limited.")
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +41,258 @@ class PDFProcessor:
             self._extract_with_pypdf2,
             self._extract_with_ocr
         ]
+
+        self.financial_keywords = [
+            'balance', 'account', 'statement', 'total', 'ending',
+            'portfolio', 'value', 'investment', 'brokerage',
+            'roth', '401k', 'cash', 'schwab', 'wealthfront',
+            'acorns', 'robinhood', 'fidelity', 'vanguard'
+        ]
+        
+        # Currency pattern for scoring
+        self.currency_pattern = r'\$[\d,]+\.?\d{0,2}'
+        
+        # Date patterns
+        self.date_patterns = [
+            r'\d{1,2}/\d{1,2}/\d{4}',
+            r'\d{4}-\d{2}-\d{2}',
+            r'[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}'
+        ]
     
+    def extract_with_page_detection(self, pdf_file_path: str) -> Tuple[str, float, int, int]:
+        """
+        Extract text with page detection to find most relevant financial data
+        
+        Args:
+            pdf_file_path: Path to the PDF file
+            
+        Returns:
+            Tuple of (best_text, confidence_score, relevant_page_number, total_pages)
+        """
+        if not os.path.exists(pdf_file_path):
+            raise FileNotFoundError(f"PDF file not found: {pdf_file_path}")
+        
+        logger.info(f"Processing PDF with page detection: {pdf_file_path}")
+        
+        try:
+            # Get total page count first
+            total_pages = self._get_page_count(pdf_file_path)
+            logger.info(f"PDF has {total_pages} pages")
+            
+            # Analyze first 3 pages maximum (most statements have key data on page 1-2)
+            pages_to_analyze = min(3, total_pages)
+            page_scores = {}
+            
+            # Score each page for financial content
+            for page_num in range(pages_to_analyze):
+                try:
+                    page_text, page_confidence = self._extract_page_text(pdf_file_path, page_num)
+                    if page_text:
+                        financial_score = self._score_page_for_financial_content(page_text)
+                        total_score = (page_confidence * 0.3) + (financial_score * 0.7)  # Weight financial content higher
+                        
+                        page_scores[page_num + 1] = {
+                            'text': page_text,
+                            'confidence': page_confidence,
+                            'financial_score': financial_score,
+                            'total_score': total_score
+                        }
+                        
+                        logger.info(f"Page {page_num + 1}: confidence={page_confidence:.2f}, financial_score={financial_score:.2f}, total={total_score:.2f}")
+                    
+                except Exception as e:
+                    logger.warning(f"Error processing page {page_num + 1}: {str(e)}")
+                    continue
+            
+            if not page_scores:
+                logger.error("No pages could be processed")
+                return "", 0.0, 1, total_pages
+            
+            # Find the best page
+            best_page = max(page_scores.keys(), key=lambda k: page_scores[k]['total_score'])
+            best_data = page_scores[best_page]
+            
+            logger.info(f"Best page: {best_page} with score {best_data['total_score']:.2f}")
+            
+            return (
+                best_data['text'],
+                best_data['confidence'], 
+                best_page,
+                total_pages
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in page detection: {str(e)}")
+            return "", 0.0, 1, 1
+    
+    def extract_single_page_pdf(self, source_pdf_path: str, page_number: int, output_path: str) -> bool:
+        """
+        Extract a single page from PDF and save as new PDF file
+        
+        Args:
+            source_pdf_path: Path to source PDF
+            page_number: Page number to extract (1-based)
+            output_path: Where to save the single page PDF
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            logger.info(f"Extracting page {page_number} from {source_pdf_path}")
+            
+            if HAS_PYMUPDF:
+                # Use PyMuPDF for better quality
+                doc = fitz.open(source_pdf_path)
+                
+                if page_number > len(doc):
+                    logger.error(f"Page {page_number} doesn't exist (PDF has {len(doc)} pages)")
+                    return False
+                
+                # Create new document with just the target page
+                new_doc = fitz.open()
+                new_doc.insert_pdf(doc, from_page=page_number - 1, to_page=page_number - 1)
+                
+                # Ensure output directory exists
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                
+                # Save the single page PDF
+                new_doc.save(output_path)
+                new_doc.close()
+                doc.close()
+                
+                logger.info(f"Successfully extracted page {page_number} to {output_path}")
+                return True
+                
+            else:
+                # Fallback using PyPDF2
+                with open(source_pdf_path, 'rb') as input_file:
+                    pdf_reader = PyPDF2.PdfReader(input_file)
+                    
+                    if page_number > len(pdf_reader.pages):
+                        logger.error(f"Page {page_number} doesn't exist (PDF has {len(pdf_reader.pages)} pages)")
+                        return False
+                    
+                    pdf_writer = PyPDF2.PdfWriter()
+                    pdf_writer.add_page(pdf_reader.pages[page_number - 1])
+                    
+                    # Ensure output directory exists
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                    
+                    with open(output_path, 'wb') as output_file:
+                        pdf_writer.write(output_file)
+                
+                logger.info(f"Successfully extracted page {page_number} to {output_path}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error extracting single page: {str(e)}")
+            return False
+    
+    def _get_page_count(self, pdf_path: str) -> int:
+        """Get total number of pages in PDF"""
+        try:
+            if HAS_PYMUPDF:
+                doc = fitz.open(pdf_path)
+                count = len(doc)
+                doc.close()
+                return count
+            else:
+                with open(pdf_path, 'rb') as file:
+                    pdf_reader = PyPDF2.PdfReader(file)
+                    return len(pdf_reader.pages)
+        except Exception as e:
+            logger.error(f"Error getting page count: {str(e)}")
+            return 1
+    
+    def _extract_page_text(self, pdf_path: str, page_number: int) -> Tuple[str, float]:
+        """Extract text from a specific page (0-based index)"""
+        try:
+            # Try pdfplumber first (most reliable for structured text)
+            with pdfplumber.open(pdf_path) as pdf:
+                if page_number < len(pdf.pages):
+                    page = pdf.pages[page_number]
+                    text = page.extract_text()
+                    if text and len(text.strip()) > 50:
+                        confidence = self._calculate_text_confidence(text, "pdfplumber")
+                        return text, confidence
+            
+            # Fallback to PyPDF2
+            with open(pdf_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                if page_number < len(pdf_reader.pages):
+                    page = pdf_reader.pages[page_number]
+                    text = page.extract_text()
+                    if text and len(text.strip()) > 50:
+                        confidence = self._calculate_text_confidence(text, "pypdf2") * 0.8
+                        return text, confidence
+            
+            logger.warning(f"Could not extract text from page {page_number + 1}")
+            return "", 0.0
+            
+        except Exception as e:
+            logger.error(f"Error extracting text from page {page_number + 1}: {str(e)}")
+            return "", 0.0
+    
+    def _score_page_for_financial_content(self, text: str) -> float:
+        """
+        Score a page based on financial content relevance
+        
+        Args:
+            text: Extracted page text
+            
+        Returns:
+            Score between 0.0 and 1.0 (higher = more financial content)
+        """
+        if not text:
+            return 0.0
+        
+        text_lower = text.lower()
+        score_factors = []
+        
+        # 1. Financial keyword density
+        keyword_count = sum(1 for keyword in self.financial_keywords if keyword in text_lower)
+        keyword_density = min(keyword_count / len(self.financial_keywords), 1.0)
+        score_factors.append(keyword_density)
+        
+        # 2. Currency amounts present
+        import re
+        currency_patterns = re.findall(r'\$[\d,]+\.?\d{0,2}', text)
+        large_amounts = [amt for amt in currency_patterns if self._parse_currency_amount(amt) > 1000]
+        currency_score = min(len(large_amounts) / 5, 1.0)  # Cap at 5 amounts
+        score_factors.append(currency_score)
+        
+        # 3. Date patterns (statements have dates)
+        date_patterns = re.findall(r'\d{1,2}[/\-]\d{1,2}[/\-]\d{4}', text)
+        date_score = min(len(date_patterns) / 3, 1.0)  # Cap at 3 dates
+        score_factors.append(date_score)
+        
+        # 4. Balance-specific keywords (higher weight)
+        balance_keywords = ['balance', 'value', 'total', 'ending', 'beginning', 'portfolio']
+        balance_count = sum(1 for keyword in balance_keywords if keyword in text_lower)
+        balance_score = min(balance_count / len(balance_keywords), 1.0)
+        score_factors.append(balance_score * 1.5)  # Higher weight
+        
+        # 5. Institution-specific markers
+        institution_markers = ['wealthfront', 'schwab', 'robinhood', 'acorns', 'adp', 'statement', 'account']
+        institution_count = sum(1 for marker in institution_markers if marker in text_lower)
+        institution_score = min(institution_count / 3, 1.0)
+        score_factors.append(institution_score)
+        
+        # Calculate weighted average
+        final_score = sum(score_factors) / len(score_factors)
+        
+        logger.debug(f"Financial content score: {final_score:.2f} (keywords: {keyword_density:.2f}, currency: {currency_score:.2f}, dates: {date_score:.2f}, balance: {balance_score:.2f}, institution: {institution_score:.2f})")
+        
+        return min(final_score, 1.0)
+    
+    def _parse_currency_amount(self, currency_str: str) -> float:
+        """Parse currency string to float for scoring"""
+        try:
+            cleaned = currency_str.replace('$', '').replace(',', '')
+            return float(cleaned)
+        except:
+            return 0.0
+
     def extract_text(self, pdf_file_path: str) -> Tuple[str, float]:
         """
         Extract text from PDF using best available method
@@ -148,41 +398,36 @@ class PDFProcessor:
         try:
             text_parts = []
             
-            if HAS_PYMUPDF:
-                # Use PyMuPDF for better PDF to image conversion
-                pdf_document = fitz.open(pdf_path)
+            # Convert PDF to images
+            pdf_document = fitz.open(pdf_path)
+            
+            for page_num in range(len(pdf_document)):
+                page = pdf_document.load_page(page_num)
                 
-                for page_num in range(len(pdf_document)):
-                    page = pdf_document.load_page(page_num)
+                # Convert page to image
+                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 2x resolution for better OCR
+                img_data = pix.tobytes("png")
+                
+                # Save to temporary file for Tesseract
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_img:
+                    temp_img.write(img_data)
+                    temp_img_path = temp_img.name
+                
+                try:
+                    # Run OCR on the image
+                    ocr_text = pytesseract.image_to_string(
+                        Image.open(temp_img_path),
+                        config='--psm 6'  # Assume uniform block of text
+                    )
                     
-                    # Convert page to image
-                    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 2x resolution for better OCR
-                    img_data = pix.tobytes("png")
-                    
-                    # Save to temporary file for Tesseract
-                    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_img:
-                        temp_img.write(img_data)
-                        temp_img_path = temp_img.name
-                    
-                    try:
-                        # Run OCR on the image
-                        ocr_text = pytesseract.image_to_string(
-                            Image.open(temp_img_path),
-                            config='--psm 6'  # Assume uniform block of text
-                        )
+                    if ocr_text.strip():
+                        text_parts.append(f"--- PAGE {page_num + 1} ---\n{ocr_text}\n")
                         
-                        if ocr_text.strip():
-                            text_parts.append(f"--- PAGE {page_num + 1} ---\n{ocr_text}\n")
-                            
-                    finally:
-                        # Clean up temporary image
-                        os.unlink(temp_img_path)
-                
-                pdf_document.close()
-            else:
-                # Fallback: Basic OCR without PyMuPDF
-                logger.warning("PyMuPDF not available, OCR functionality limited")
-                return "OCR requires PyMuPDF (pip install PyMuPDF)", 0.1
+                finally:
+                    # Clean up temporary image
+                    os.unlink(temp_img_path)
+            
+            pdf_document.close()
             
             full_text = "\n".join(text_parts)
             
@@ -295,3 +540,17 @@ def extract_text_from_pdf(pdf_path: str) -> Tuple[str, float]:
     """
     processor = PDFProcessor()
     return processor.extract_text(pdf_path)
+
+# Convenience function for easy importing
+def extract_text_with_page_detection(pdf_path: str) -> Tuple[str, float, int, int]:
+    """
+    Convenience function to extract text with page detection
+    
+    Args:
+        pdf_path: Path to PDF file
+        
+    Returns:
+        Tuple of (extracted_text, confidence_score, relevant_page, total_pages)
+    """
+    processor = PDFProcessor()
+    return processor.extract_with_page_detection(pdf_path)

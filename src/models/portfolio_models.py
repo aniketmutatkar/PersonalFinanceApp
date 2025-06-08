@@ -169,21 +169,38 @@ class PortfolioTrends:
             if not isinstance(value, Decimal):
                 self.growth_attribution[key] = Decimal(str(value))
 
-
 @dataclass
 class StatementUpload:
-    """Represents an uploaded statement for OCR processing"""
-    account_id: int
-    statement_date: date
+    """Enhanced model for uploaded statements with page detection and OCR processing"""
     original_filename: str
-    file_path: Optional[str] = None
+    file_path: str
+    
+    # Core statement info (optional - may be None for failed processing)
+    account_id: Optional[int] = None
+    statement_date: Optional[date] = None
+    
+    # NEW: Page detection fields
+    relevant_page_number: int = 1
+    page_pdf_path: Optional[str] = None  # Path to extracted single page PDF
+    total_pages: int = 1
+    
+    # OCR extraction fields
     raw_extracted_text: Optional[str] = None
     extracted_balance: Optional[Decimal] = None
     confidence_score: Decimal = Decimal('0.0')
+    
+    # Review workflow fields
     requires_review: bool = False
     reviewed_by_user: bool = False
+    
+    # NEW: Processing status tracking
+    processing_status: str = "pending"  # 'pending', 'processed', 'failed', 'saved'
+    processing_error: Optional[str] = None
+    
+    # Timestamps
     id: Optional[int] = None
     upload_timestamp: Optional[date] = None
+    processed_timestamp: Optional[date] = None
     
     def __post_init__(self):
         """Ensure extracted_balance and confidence_score are Decimal"""
@@ -192,6 +209,47 @@ class StatementUpload:
         
         if not isinstance(self.confidence_score, Decimal):
             self.confidence_score = Decimal(str(self.confidence_score))
+    
+    @property
+    def is_processed(self) -> bool:
+        """Check if statement has been successfully processed"""
+        return self.processing_status in ['processed', 'saved']
+    
+    @property
+    def has_errors(self) -> bool:
+        """Check if processing encountered errors"""
+        return self.processing_status == 'failed' or self.processing_error is not None
+    
+    @property
+    def can_quick_save(self) -> bool:
+        """Check if statement can be quick saved (high confidence + all required data)"""
+        return (
+            self.is_processed and
+            self.account_id is not None and
+            self.extracted_balance is not None and
+            self.statement_date is not None and
+            self.confidence_score >= Decimal('0.6')
+        )
+    
+    def mark_as_processed(self, confidence_score: Decimal, extracted_balance: Optional[Decimal] = None):
+        """Mark statement as successfully processed"""
+        self.processing_status = 'processed'
+        self.confidence_score = confidence_score
+        self.processed_timestamp = date.today()
+        
+        if extracted_balance is not None:
+            self.extracted_balance = extracted_balance
+    
+    def mark_as_failed(self, error_message: str):
+        """Mark statement processing as failed"""
+        self.processing_status = 'failed'
+        self.processing_error = error_message
+        self.processed_timestamp = date.today()
+    
+    def mark_as_saved(self):
+        """Mark statement as saved to portfolio balances"""
+        self.processing_status = 'saved'
+        self.reviewed_by_user = True
 
 
 # Account name mapping for transaction integration

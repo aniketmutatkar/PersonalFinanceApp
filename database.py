@@ -76,23 +76,73 @@ class PortfolioBalanceModel(Base):
 
 
 class StatementUploadModel(Base):
-    """SQLAlchemy model for Statement Uploads (for future OCR functionality)"""
+    """Enhanced SQLAlchemy model for Statement Uploads with page detection"""
     __tablename__ = 'statement_uploads'
     
     id = Column(Integer, primary_key=True)
-    account_id = Column(Integer, nullable=False)  # References investment_accounts.id
-    statement_date = Column(Date, nullable=False)
+    account_id = Column(Integer, nullable=True)  # Made nullable for unmatched statements
+    statement_date = Column(Date, nullable=True)  # Made nullable for failed extractions
     original_filename = Column(String, nullable=False)
-    file_path = Column(String)
+    file_path = Column(String, nullable=False)  # Full PDF path
+    
+    # NEW: Page detection fields
+    relevant_page_number = Column(Integer, default=1)  # Which page has the data
+    page_pdf_path = Column(String)  # Path to extracted single page PDF
+    total_pages = Column(Integer, default=1)  # Total pages in original PDF
+    
+    # OCR and extraction fields
     raw_extracted_text = Column(String)
     extracted_balance = Column(Float)
     confidence_score = Column(Float, default=0.0)
+    
+    # Review workflow fields
     requires_review = Column(Boolean, default=False)
     reviewed_by_user = Column(Boolean, default=False)
+    
+    # NEW: Processing status
+    processing_status = Column(String, default='pending')  # 'pending', 'processed', 'failed', 'saved'
+    processing_error = Column(String)  # Store any processing errors
+    
+    # Timestamps
     upload_timestamp = Column(DateTime, default=datetime.utcnow)
+    processed_timestamp = Column(DateTime)
     
     def __repr__(self):
-        return f"<StatementUpload(account_id={self.account_id}, filename='{self.original_filename}')>"
+        return f"<StatementUpload(id={self.id}, filename='{self.original_filename}', status='{self.processing_status}')>"
+
+
+def add_statement_uploads_enhancements():
+    """Add new columns to existing statement_uploads table"""
+    session = get_db_session()
+    try:
+        # Add new columns if they don't exist
+        new_columns = [
+            "ALTER TABLE statement_uploads ADD COLUMN relevant_page_number INTEGER DEFAULT 1",
+            "ALTER TABLE statement_uploads ADD COLUMN page_pdf_path TEXT",
+            "ALTER TABLE statement_uploads ADD COLUMN total_pages INTEGER DEFAULT 1", 
+            "ALTER TABLE statement_uploads ADD COLUMN processing_status TEXT DEFAULT 'pending'",
+            "ALTER TABLE statement_uploads ADD COLUMN processing_error TEXT",
+            "ALTER TABLE statement_uploads ADD COLUMN processed_timestamp DATETIME"
+        ]
+        
+        for sql in new_columns:
+            try:
+                session.execute(text(sql))
+                session.commit()
+                print(f"Added column: {sql.split('ADD COLUMN')[1].split()[0]}")
+            except Exception as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning adding column: {str(e)}")
+                session.rollback()
+        
+        print("Enhanced statement_uploads table with page detection support")
+        
+    except Exception as e:
+        session.rollback()
+        print(f"Error enhancing statement_uploads table: {str(e)}")
+        raise
+    finally:
+        session.close()
 
 
 def create_monthly_summary_table(categories):
@@ -210,7 +260,10 @@ def init_database(categories):
     # Add portfolio constraints
     add_portfolio_constraints()
     
-    print("Database initialized successfully with portfolio tracking tables.")
+    # NEW: Add statement uploads enhancements
+    add_statement_uploads_enhancements()
+    
+    print("Database initialized successfully with enhanced OCR support.")
 
 
 def add_portfolio_constraints():

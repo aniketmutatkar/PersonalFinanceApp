@@ -285,3 +285,137 @@ class PortfolioRepository:
             notes=model.notes,
             created_at=model.created_at.date() if model.created_at else None
         )
+    
+    def save_statement_upload(self, statement: StatementUpload) -> StatementUpload:
+        """Save statement upload record to database"""
+        session = get_db_session()
+        
+        try:
+            statement_model = StatementUploadModel(
+                account_id=statement.account_id,
+                statement_date=statement.statement_date,
+                original_filename=statement.original_filename,
+                file_path=statement.file_path,
+                relevant_page_number=statement.relevant_page_number,
+                page_pdf_path=statement.page_pdf_path,
+                total_pages=statement.total_pages,
+                raw_extracted_text=statement.raw_extracted_text[:5000] if statement.raw_extracted_text else None,  # Limit size
+                extracted_balance=float(statement.extracted_balance) if statement.extracted_balance else None,
+                confidence_score=float(statement.confidence_score),
+                requires_review=statement.requires_review,
+                reviewed_by_user=statement.reviewed_by_user,
+                processing_status=statement.processing_status,
+                processing_error=statement.processing_error,
+                processed_timestamp=statement.processed_timestamp
+            )
+            
+            session.add(statement_model)
+            session.flush()  # Get the ID
+            session.commit()
+            
+            # Update domain object with generated ID
+            statement.id = statement_model.id
+            statement.upload_timestamp = statement_model.upload_timestamp.date() if statement_model.upload_timestamp else None
+            
+            return statement
+            
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+    
+    def get_statement_upload(self, statement_id: int) -> Optional[StatementUpload]:
+        """Get statement upload by ID"""
+        session = get_db_session()
+        
+        try:
+            model = session.query(StatementUploadModel).filter(
+                StatementUploadModel.id == statement_id
+            ).first()
+            
+            if not model:
+                return None
+            
+            return StatementUpload(
+                id=model.id,
+                account_id=model.account_id,
+                statement_date=model.statement_date,
+                original_filename=model.original_filename,
+                file_path=model.file_path,
+                relevant_page_number=model.relevant_page_number or 1,
+                page_pdf_path=model.page_pdf_path,
+                total_pages=model.total_pages or 1,
+                raw_extracted_text=model.raw_extracted_text,
+                extracted_balance=Decimal(str(model.extracted_balance)) if model.extracted_balance else None,
+                confidence_score=Decimal(str(model.confidence_score)) if model.confidence_score else Decimal('0'),
+                requires_review=model.requires_review or False,
+                reviewed_by_user=model.reviewed_by_user or False,
+                processing_status=model.processing_status or 'pending',
+                processing_error=model.processing_error,
+                upload_timestamp=model.upload_timestamp.date() if model.upload_timestamp else None,
+                processed_timestamp=model.processed_timestamp.date() if model.processed_timestamp else None
+            )
+        finally:
+            session.close()
+    
+    def mark_statement_reviewed(self, statement_id: int, reviewed_by_user: bool = True):
+        """Mark statement as reviewed"""
+        session = get_db_session()
+        
+        try:
+            statement = session.query(StatementUploadModel).filter(
+                StatementUploadModel.id == statement_id
+            ).first()
+            
+            if statement:
+                statement.reviewed_by_user = reviewed_by_user
+                statement.processing_status = 'saved' if reviewed_by_user else 'processed'
+                session.commit()
+                
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+    
+    def mark_statement_processed(self, statement_id: int):
+        """Mark statement as processed (after quick save)"""
+        session = get_db_session()
+        
+        try:
+            statement = session.query(StatementUploadModel).filter(
+                StatementUploadModel.id == statement_id
+            ).first()
+            
+            if statement:
+                statement.processing_status = 'saved'
+                session.commit()
+                
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+    
+    def check_filename_duplicate(self, filename: str) -> Optional[StatementUpload]:
+        """Check if a file with the same name was already uploaded"""
+        session = get_db_session()
+        
+        try:
+            existing = session.query(StatementUploadModel).filter(
+                StatementUploadModel.original_filename == filename
+            ).first()
+            
+            if not existing:
+                return None
+            
+            return StatementUpload(
+                id=existing.id,
+                original_filename=existing.original_filename,
+                upload_timestamp=existing.upload_timestamp.date() if existing.upload_timestamp else None,
+                processing_status=existing.processing_status or 'pending',
+                account_id=existing.account_id
+            )
+        finally:
+            session.close()

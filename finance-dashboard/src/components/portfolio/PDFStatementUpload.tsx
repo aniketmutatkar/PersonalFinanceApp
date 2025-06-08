@@ -1,4 +1,4 @@
-// src/components/portfolio/PDFStatementUpload.tsx
+// src/components/portfolio/PDFStatementUpload.tsx - Enhanced with Larger Review Interface
 import React, { useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -24,12 +24,32 @@ interface ExtractedData {
   extraction_notes?: string[];
 }
 
-interface UploadResponse {
-  statement_id?: number;
-  extracted_data: ExtractedData;
-  requires_review: boolean;
-  confidence_score: number;
+interface DuplicateCheck {
+  is_duplicate: boolean;
+  conflict_type: string;
   message: string;
+  existing_balance?: any;
+  similarity_percentage: number;
+  recommendation: string;
+}
+
+interface UploadResponse {
+  statement_id: number;
+  extracted_data: ExtractedData;
+  confidence_score: number;
+  relevant_page: number;
+  total_pages: number;
+  requires_review: boolean;
+  message: string;
+  can_quick_save: boolean;
+  duplicate_check?: DuplicateCheck;
+}
+
+interface ReviewFormData {
+  account_id: string;
+  balance_date: string;
+  balance_amount: string;
+  notes: string;
 }
 
 interface PDFStatementUploadProps {
@@ -43,25 +63,56 @@ export default function PDFStatementUpload({
   onClose, 
   onBalanceAdded 
 }: PDFStatementUploadProps) {
+  // States
   const [dragActive, setDragActive] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadResponse, setUploadResponse] = useState<UploadResponse | null>(null);
-  const [reviewData, setReviewData] = useState<any>(null);
-  const [isConfirming, setIsConfirming] = useState(false);
+  const [showReviewMode, setShowReviewMode] = useState(false);
+  const [isQuickSaving, setIsQuickSaving] = useState(false);
+  const [isReviewSaving, setIsReviewSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
 
   const queryClient = useQueryClient();
+
+  // Form data for review mode
+  const [reviewData, setReviewData] = useState<ReviewFormData>({
+    account_id: '',
+    balance_date: '',
+    balance_amount: '',
+    notes: ''
+  });
 
   // Reset state when modal opens/closes
   React.useEffect(() => {
     if (isOpen) {
       setUploadResponse(null);
-      setReviewData(null);
+      setShowReviewMode(false);
       setErrorMessage('');
       setSuccessMessage('');
+      setShowDuplicateConfirm(false);
+      setReviewData({
+        account_id: '',
+        balance_date: '',
+        balance_amount: '',
+        notes: ''
+      });
     }
   }, [isOpen]);
+
+  // Update review data when upload response changes
+  React.useEffect(() => {
+    if (uploadResponse?.extracted_data) {
+      const data = uploadResponse.extracted_data;
+      setReviewData({
+        account_id: data.matched_account?.id.toString() || '',
+        balance_date: data.statement_period_end || '',
+        balance_amount: data.ending_balance?.toString() || '',
+        notes: `Auto-extracted from ${uploadResponse.extracted_data.institution || 'PDF'} statement`
+      });
+    }
+  }, [uploadResponse]);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -95,8 +146,8 @@ export default function PDFStatementUpload({
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) { // 10MB limit
-      setErrorMessage('File size must be less than 10MB.');
+    if (file.size > 25 * 1024 * 1024) { // 25MB limit
+      setErrorMessage('File size must be less than 25MB.');
       return;
     }
 
@@ -121,17 +172,8 @@ export default function PDFStatementUpload({
       const result: UploadResponse = await response.json();
       setUploadResponse(result);
 
-      // If high confidence and no review needed, auto-populate review form
-      if (!result.requires_review && result.extracted_data.ending_balance) {
-        setReviewData({
-          account_id: result.extracted_data.matched_account?.id || '',
-          balance_date: result.extracted_data.statement_period_end || '',
-          balance_amount: result.extracted_data.ending_balance,
-          notes: `Auto-extracted from ${file.name}`,
-          confidence_score: result.confidence_score,
-          original_filename: file.name
-        });
-      }
+      console.log('📊 Upload result:', result);
+
     } catch (error) {
       console.error('Upload error:', error);
       setErrorMessage(error instanceof Error ? error.message : 'Upload failed');
@@ -140,30 +182,86 @@ export default function PDFStatementUpload({
     }
   };
 
-  const handleConfirmExtraction = async () => {
-    if (!reviewData) return;
+  const handleQuickSave = async (confirmDuplicates = false) => {
+    if (!uploadResponse) return;
 
-    setIsConfirming(true);
+    setIsQuickSaving(true);
     setErrorMessage('');
 
     try {
-      const response = await fetch('http://192.168.1.226:8000/api/portfolio/statements/confirm', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(reviewData),
-      });
+      const response = await fetch(
+        `http://192.168.1.226:8000/api/portfolio/statements/${uploadResponse.statement_id}/quick-save`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirm_duplicates: confirmDuplicates }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.requires_confirmation && !confirmDuplicates) {
+        setShowDuplicateConfirm(true);
+        return;
+      }
+
+      if (result.success) {
+        setSuccessMessage('Balance saved successfully via quick save!');
+        
+        queryClient.invalidateQueries({ queryKey: ['portfolioOverview'] });
+        queryClient.invalidateQueries({ queryKey: ['portfolioTrends'] });
+
+        if (onBalanceAdded) {
+          onBalanceAdded();
+        }
+
+        setTimeout(() => {
+          onClose();
+        }, 2000);
+      } else {
+        throw new Error(result.message || 'Quick save failed');
+      }
+
+    } catch (error) {
+      console.error('Quick save error:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'Quick save failed');
+    } finally {
+      setIsQuickSaving(false);
+    }
+  };
+
+  const handleReviewSave = async () => {
+    if (!uploadResponse || !reviewData.account_id || !reviewData.balance_amount || !reviewData.balance_date) {
+      setErrorMessage('Please fill in all required fields.');
+      return;
+    }
+
+    setIsReviewSaving(true);
+    setErrorMessage('');
+
+    try {
+      const response = await fetch(
+        `http://192.168.1.226:8000/api/portfolio/statements/${uploadResponse.statement_id}/review`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            account_id: parseInt(reviewData.account_id),
+            balance_date: reviewData.balance_date,
+            balance_amount: parseFloat(reviewData.balance_amount),
+            notes: reviewData.notes
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to save balance');
+        throw new Error(errorData.detail || 'Review save failed');
       }
 
       const result = await response.json();
       setSuccessMessage(result.message);
 
-      // Refresh portfolio data
       queryClient.invalidateQueries({ queryKey: ['portfolioOverview'] });
       queryClient.invalidateQueries({ queryKey: ['portfolioTrends'] });
 
@@ -171,16 +269,15 @@ export default function PDFStatementUpload({
         onBalanceAdded();
       }
 
-      // Auto-close after success
       setTimeout(() => {
         onClose();
       }, 2000);
 
     } catch (error) {
-      console.error('Confirmation error:', error);
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to save balance');
+      console.error('Review save error:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'Review save failed');
     } finally {
-      setIsConfirming(false);
+      setIsReviewSaving(false);
     }
   };
 
@@ -215,9 +312,13 @@ export default function PDFStatementUpload({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 border border-gray-700 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div className={`bg-gray-800 border border-gray-700 rounded-lg ${
+        showReviewMode 
+          ? 'w-full max-w-[95vw] h-[95vh] overflow-hidden flex flex-col' 
+          : 'w-full max-w-3xl max-h-[90vh] overflow-y-auto'
+      }`}>
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
+        <div className="flex items-center justify-between p-6 border-b border-gray-700 flex-shrink-0">
           <h3 className="text-lg font-medium text-white">Upload PDF Statement</h3>
           <button
             onClick={onClose}
@@ -229,7 +330,7 @@ export default function PDFStatementUpload({
           </button>
         </div>
 
-        <div className="p-6">
+        <div className={`p-6 ${showReviewMode ? 'flex-1 overflow-hidden flex flex-col' : ''}`}>
           {/* Success Message */}
           {successMessage && (
             <div className="mb-4 p-3 bg-green-900/20 border border-green-800/30 rounded-lg">
@@ -246,6 +347,48 @@ export default function PDFStatementUpload({
               <div className="flex items-center space-x-2">
                 <span className="text-red-400">✕</span>
                 <span className="text-red-300 text-sm">{errorMessage}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Duplicate Confirmation Dialog */}
+          {showDuplicateConfirm && uploadResponse?.duplicate_check && (
+            <div className="mb-4 p-4 bg-yellow-900/20 border border-yellow-800/30 rounded-lg">
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <span className="text-yellow-400">⚠️</span>
+                  <span className="text-yellow-300 font-medium">Duplicate Detected</span>
+                </div>
+                <p className="text-yellow-200 text-sm">{uploadResponse.duplicate_check.message}</p>
+                
+                {uploadResponse.duplicate_check.existing_balance && (
+                  <div className="bg-gray-900/50 rounded p-3">
+                    <div className="text-xs text-gray-300 mb-2">Existing Balance:</div>
+                    <div className="text-white font-bold">
+                      {formatCurrency(uploadResponse.duplicate_check.existing_balance.balance_amount)}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {formatDate(uploadResponse.duplicate_check.existing_balance.balance_date)} 
+                      ({uploadResponse.duplicate_check.existing_balance.data_source})
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex space-x-2 pt-2">
+                  <button
+                    onClick={() => handleQuickSave(true)}
+                    disabled={isQuickSaving}
+                    className="flex-1 bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-800 text-white px-3 py-2 rounded text-sm"
+                  >
+                    Override & Save
+                  </button>
+                  <button
+                    onClick={() => setShowDuplicateConfirm(false)}
+                    className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -275,41 +418,52 @@ export default function PDFStatementUpload({
                 <div className="text-4xl">📄</div>
                 <div>
                   <p className="text-white font-medium">
-                    {isUploading ? 'Processing PDF...' : 'Drop PDF statement here or click to browse'}
+                    {isUploading ? 'Processing PDF with page detection...' : 'Drop PDF statement here or click to browse'}
                   </p>
                   <p className="text-gray-400 text-sm mt-1">
-                    Supports: Wealthfront, Schwab, Robinhood, Acorns, ADP statements
+                    Enhanced with smart page detection • Supports: Wealthfront, Schwab, Robinhood, Acorns, ADP
                   </p>
                 </div>
                 
                 {isUploading && (
-                  <div className="flex items-center justify-center space-x-2">
-                    <svg className="animate-spin h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24">
+                  <div className="flex flex-col items-center space-y-2">
+                    <svg className="animate-spin h-8 w-8 text-blue-400" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span className="text-blue-400 text-sm">Extracting data...</span>
+                    <div className="text-center">
+                      <div className="text-blue-400 text-sm font-medium">Analyzing PDF...</div>
+                      <div className="text-gray-400 text-xs">Detecting relevant page and extracting data</div>
+                    </div>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Extraction Results */}
-          {uploadResponse && (
+          {/* Processing Results & User Choice */}
+          {uploadResponse && !showReviewMode && (
             <div className="space-y-6">
-              {/* Confidence Score */}
+              {/* Page Detection Results */}
               <div className="bg-gray-900/50 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-gray-300 text-sm">Extraction Results</span>
-                  <span className={`text-sm font-medium ${getConfidenceColor(uploadResponse.confidence_score)}`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-blue-400 text-xl">📑</span>
+                    <div>
+                      <div className="text-white font-medium">Page Detection Results</div>
+                      <div className="text-gray-400 text-sm">
+                        Found key data on page {uploadResponse.relevant_page} of {uploadResponse.total_pages}
+                      </div>
+                    </div>
+                  </div>
+                  <span className={`text-sm font-medium px-3 py-1 rounded-full ${getConfidenceColor(uploadResponse.confidence_score)} bg-gray-800`}>
                     {getConfidenceLabel(uploadResponse.confidence_score)} ({(uploadResponse.confidence_score * 100).toFixed(1)}%)
                   </span>
                 </div>
-                <p className="text-white text-sm">{uploadResponse.message}</p>
+                <p className="text-gray-300 text-sm">{uploadResponse.message}</p>
               </div>
 
-              {/* Extracted Data */}
+              {/* Extracted Data Preview */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <div>
@@ -326,30 +480,28 @@ export default function PDFStatementUpload({
                     </div>
                   </div>
                   
-                  <div>
-                    <label className="text-gray-400 text-xs">Account Number</label>
-                    <div className="text-white font-medium">
-                      {uploadResponse.extracted_data.account_number || 'Not detected'}
+                  {uploadResponse.extracted_data.matched_account && (
+                    <div className="bg-green-900/20 border border-green-800/30 rounded p-3">
+                      <div className="flex items-center space-x-2 mb-1">
+                        <span className="text-green-400">✓</span>
+                        <span className="text-green-300 font-medium text-sm">Account Matched</span>
+                      </div>
+                      <div className="text-white text-sm">
+                        {uploadResponse.extracted_data.matched_account.name}
+                      </div>
+                      <div className="text-gray-400 text-xs">
+                        {uploadResponse.extracted_data.matched_account.institution}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <div className="space-y-3">
                   <div>
                     <label className="text-gray-400 text-xs">Statement Period</label>
                     <div className="text-white font-medium">
-                      {uploadResponse.extracted_data.statement_period_start && uploadResponse.extracted_data.statement_period_end
-                        ? `${formatDate(uploadResponse.extracted_data.statement_period_start)} - ${formatDate(uploadResponse.extracted_data.statement_period_end)}`
-                        : 'Not detected'
-                      }
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="text-gray-400 text-xs">Beginning Balance</label>
-                    <div className="text-white font-medium">
-                      {uploadResponse.extracted_data.beginning_balance 
-                        ? formatCurrency(uploadResponse.extracted_data.beginning_balance)
+                      {uploadResponse.extracted_data.statement_period_end
+                        ? formatDate(uploadResponse.extracted_data.statement_period_end)
                         : 'Not detected'
                       }
                     </div>
@@ -357,7 +509,7 @@ export default function PDFStatementUpload({
                   
                   <div>
                     <label className="text-gray-400 text-xs">Ending Balance</label>
-                    <div className="text-green-400 font-bold text-lg">
+                    <div className="text-green-400 font-bold text-xl">
                       {uploadResponse.extracted_data.ending_balance 
                         ? formatCurrency(uploadResponse.extracted_data.ending_balance)
                         : 'Not detected'
@@ -367,73 +519,189 @@ export default function PDFStatementUpload({
                 </div>
               </div>
 
-              {/* Account Matching */}
-              {uploadResponse.extracted_data.matched_account && (
-                <div className="bg-green-900/20 border border-green-800/30 rounded-lg p-4">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <span className="text-green-400">✓</span>
-                    <span className="text-green-300 font-medium text-sm">Account Matched</span>
-                  </div>
-                  <div className="text-white">
-                    {uploadResponse.extracted_data.matched_account.name} ({uploadResponse.extracted_data.matched_account.institution})
-                  </div>
+              {/* User Choice Buttons */}
+              <div className="bg-gray-900/30 rounded-lg p-6">
+                <h4 className="text-white font-medium mb-4 text-center">Choose Your Next Step</h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Quick Save Option */}
+                  <button
+                    onClick={() => handleQuickSave(false)}
+                    disabled={!uploadResponse.can_quick_save || isQuickSaving || showDuplicateConfirm}
+                    className={`p-4 rounded-lg border-2 transition-all ${
+                      uploadResponse.can_quick_save 
+                        ? 'border-green-600 bg-green-900/20 hover:bg-green-900/40 cursor-pointer' 
+                        : 'border-gray-600 bg-gray-900/20 cursor-not-allowed'
+                    }`}
+                  >
+                    <div className="text-center space-y-2">
+                      <div className="text-2xl">⚡</div>
+                      <div className={`font-medium ${uploadResponse.can_quick_save ? 'text-green-400' : 'text-gray-500'}`}>
+                        Quick Save
+                      </div>
+                      <div className="text-sm text-gray-400">
+                        {uploadResponse.can_quick_save 
+                          ? `Save ${formatCurrency(uploadResponse.extracted_data.ending_balance || 0)} immediately`
+                          : 'Review required due to low confidence or conflicts'
+                        }
+                      </div>
+                      {isQuickSaving && (
+                        <div className="flex items-center justify-center mt-2">
+                          <svg className="animate-spin h-4 w-4 text-green-400" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Review Option */}
+                  <button
+                    onClick={() => setShowReviewMode(true)}
+                    className="p-4 rounded-lg border-2 border-blue-600 bg-blue-900/20 hover:bg-blue-900/40 transition-all"
+                  >
+                    <div className="text-center space-y-2">
+                      <div className="text-2xl">📝</div>
+                      <div className="text-blue-400 font-medium">Review & Edit</div>
+                      <div className="text-sm text-gray-400">
+                        View PDF side-by-side and verify extracted data
+                      </div>
+                    </div>
+                  </button>
                 </div>
-              )}
 
-              {/* Review Form (for auto-extracted data) */}
-              {reviewData && (
-                <div className="bg-gray-900/50 rounded-lg p-4">
-                  <h4 className="text-white font-medium mb-4">Confirm Balance Entry</h4>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <label className="block text-gray-400 text-xs mb-1">Account</label>
-                      <div className="text-white font-medium">
-                        {uploadResponse.extracted_data.matched_account?.name}
-                      </div>
+                {/* Duplicate Warning */}
+                {uploadResponse.duplicate_check?.is_duplicate && (
+                  <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-800/30 rounded">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-yellow-400">⚠️</span>
+                      <span className="text-yellow-300 text-sm font-medium">Potential Duplicate Detected</span>
                     </div>
-                    
-                    <div>
-                      <label className="block text-gray-400 text-xs mb-1">Date</label>
-                      <div className="text-white font-medium">
-                        {formatDate(reviewData.balance_date)}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-gray-400 text-xs mb-1">Amount</label>
-                      <div className="text-green-400 font-bold">
-                        {formatCurrency(reviewData.balance_amount)}
-                      </div>
-                    </div>
+                    <p className="text-yellow-200 text-sm mt-1">{uploadResponse.duplicate_check.message}</p>
                   </div>
+                )}
+              </div>
+            </div>
+          )}
 
-                  <div className="mb-4">
-                    <label className="block text-gray-400 text-xs mb-1">Notes</label>
-                    <textarea
-                      value={reviewData.notes}
-                      onChange={(e) => setReviewData({...reviewData, notes: e.target.value})}
-                      className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm"
-                      rows={2}
+          {/* Review Mode - ENHANCED FULL SCREEN */}
+          {showReviewMode && uploadResponse && (
+            <div className="flex flex-col h-full">
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                <h4 className="text-white font-medium">Review Extracted Data</h4>
+                <button
+                  onClick={() => setShowReviewMode(false)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <span className="text-sm">← Back to Options</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0">
+                {/* Left: PDF Viewer - 75% width */}
+                <div className="lg:col-span-3 border border-gray-600 rounded-lg flex flex-col">
+                    <div className="p-4 border-b border-gray-600 bg-gray-900/50 flex-shrink-0">
+                    <h5 className="text-white font-medium">Statement Preview</h5>
+                    <p className="text-gray-400 text-sm">
+                        Page {uploadResponse.relevant_page} of {uploadResponse.total_pages} • Key data detected
+                    </p>
+                    </div>
+                    <div className="flex-1 min-h-0">
+                    <iframe
+                        src={`http://192.168.1.226:8000/api/portfolio/statements/${uploadResponse.statement_id}/page-pdf#zoom=100`}
+                        className="w-full h-full border-0"
+                        title={`Statement Page ${uploadResponse.relevant_page}`}
                     />
+                    </div>
+                </div>
+
+                {/* Right: Review Form - ENHANCED */}
+                <div className="lg:col-span-1 flex flex-col">
+                  <div className="bg-gray-900/50 rounded-lg p-4 flex-shrink-0">
+                    <div className="flex items-center justify-between mb-3">
+                      <h5 className="text-white font-medium">Extracted Data</h5>
+                      <span className={`text-xs px-2 py-1 rounded ${getConfidenceColor(uploadResponse.confidence_score)} bg-gray-800`}>
+                        {(uploadResponse.confidence_score * 100).toFixed(1)}% confidence
+                      </span>
+                    </div>
+
+                    <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                      {/* Account Selection */}
+                      <div>
+                        <label className="block text-gray-400 text-sm mb-2">Account *</label>
+                        <select
+                          value={reviewData.account_id}
+                          onChange={(e) => setReviewData({...reviewData, account_id: e.target.value})}
+                          className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                        >
+                          <option value="">Select account...</option>
+                          {uploadResponse.extracted_data.matched_account && (
+                            <option value={uploadResponse.extracted_data.matched_account.id}>
+                              {uploadResponse.extracted_data.matched_account.name} ({uploadResponse.extracted_data.matched_account.institution})
+                            </option>
+                          )}
+                          {uploadResponse.extracted_data.account_suggestions?.map(acc => (
+                            <option key={acc.id} value={acc.id}>
+                              {acc.name} ({acc.institution})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Date */}
+                      <div>
+                        <label className="block text-gray-400 text-sm mb-2">Statement Date *</label>
+                        <input
+                          type="date"
+                          value={reviewData.balance_date}
+                          onChange={(e) => setReviewData({...reviewData, balance_date: e.target.value})}
+                          className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                        />
+                      </div>
+
+                      {/* Amount */}
+                      <div>
+                        <label className="block text-gray-400 text-sm mb-2">Ending Balance *</label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2 text-gray-400">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={reviewData.balance_amount}
+                            onChange={(e) => setReviewData({...reviewData, balance_amount: e.target.value})}
+                            className="w-full bg-gray-700 border border-gray-600 rounded pl-8 pr-3 py-2 text-white"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Notes */}
+                      <div>
+                        <label className="block text-gray-400 text-sm mb-2">Notes</label>
+                        <textarea
+                          value={reviewData.notes}
+                          onChange={(e) => setReviewData({...reviewData, notes: e.target.value})}
+                          className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm"
+                          rows={3}
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex space-x-3">
+                  {/* Action Buttons - FIXED POSITION */}
+                  <div className="flex space-x-3 mt-4 flex-shrink-0">
                     <button
-                      onClick={() => {
-                        setUploadResponse(null);
-                        setReviewData(null);
-                      }}
+                      onClick={() => setShowReviewMode(false)}
                       className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded transition-colors"
                     >
-                      Upload Different File
+                      Cancel
                     </button>
                     <button
-                      onClick={handleConfirmExtraction}
-                      disabled={isConfirming}
-                      className="flex-2 bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white px-6 py-2 rounded transition-colors flex items-center justify-center space-x-2"
+                      onClick={handleReviewSave}
+                      disabled={!reviewData.account_id || !reviewData.balance_amount || !reviewData.balance_date || isReviewSaving}
+                      className="flex-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-6 py-2 rounded transition-colors flex items-center justify-center space-x-2"
                     >
-                      {isConfirming ? (
+                      {isReviewSaving ? (
                         <>
                           <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -447,35 +715,7 @@ export default function PDFStatementUpload({
                     </button>
                   </div>
                 </div>
-              )}
-
-              {/* Manual Review Required */}
-              {uploadResponse.requires_review && !reviewData && (
-                <div className="bg-yellow-900/20 border border-yellow-800/30 rounded-lg p-4">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <span className="text-yellow-400">⚠️</span>
-                    <span className="text-yellow-300 font-medium text-sm">Manual Review Required</span>
-                  </div>
-                  <p className="text-yellow-200 text-sm mb-4">{uploadResponse.message}</p>
-                  
-                  <div className="flex space-x-3">
-                    <button
-                      onClick={() => {
-                        setUploadResponse(null);
-                      }}
-                      className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded transition-colors"
-                    >
-                      Try Different File
-                    </button>
-                    <button
-                      onClick={onClose}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors"
-                    >
-                      Manual Entry Instead
-                    </button>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
           )}
 
