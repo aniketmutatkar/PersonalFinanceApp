@@ -14,7 +14,7 @@ interface TransactionTableProps {
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onSortChange: (field: string, direction: string) => void;
-  showEditButton?: boolean; // NEW: Make edit functionality optional
+  showEditButton?: boolean;
 }
 
 function formatCurrency(amount: number): string {
@@ -34,26 +34,34 @@ function formatDate(dateString: string): string {
     // Create date object with local timezone (month is 0-indexed)
     const date = new Date(year, month - 1, day);
     
-    // Format as readable date
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    // More compact format - just month/day for current year, month/day/year for others
+    const currentYear = new Date().getFullYear();
+    if (year === currentYear) {
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+      });
+    } else {
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: '2-digit'
+      });
+    }
   } catch (error) {
     console.error('Error formatting date:', error);
-    return dateString; // Fallback to original string
+    return dateString;
   }
 }
 
 function getSortIcon(field: string, currentField: string, currentDirection: string) {
   if (field !== currentField) {
-    return <ChevronUp className="w-4 h-4 text-gray-500 opacity-0 group-hover:opacity-100" />;
+    return <ChevronUp className="w-3 h-3 text-gray-500 opacity-0 group-hover:opacity-100" />;
   }
   
   return currentDirection === 'asc' 
-    ? <ChevronUp className="w-4 h-4 text-blue-400" />
-    : <ChevronDown className="w-4 h-4 text-blue-400" />;
+    ? <ChevronUp className="w-3 h-3 text-blue-400" />
+    : <ChevronDown className="w-3 h-3 text-blue-400" />;
 }
 
 function handleSort(field: string, currentField: string, currentDirection: string, onSortChange: (field: string, direction: string) => void) {
@@ -62,7 +70,7 @@ function handleSort(field: string, currentField: string, currentDirection: strin
     const newDirection = currentDirection === 'asc' ? 'desc' : 'asc';
     onSortChange(field, newDirection);
   } else {
-    // Default to desc for new field (except amount, which should default to desc for largest first)
+    // Default to desc for new field
     const defaultDirection = field === 'amount' ? 'desc' : 'desc';
     onSortChange(field, defaultDirection);
   }
@@ -78,9 +86,8 @@ export default function TransactionTable({
   onPageChange, 
   onPageSizeChange,
   onSortChange,
-  showEditButton = true // NEW: Default to true
+  showEditButton = true
 }: TransactionTableProps) {
-  // NEW: Add state for edit modal
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   const totalPages = Math.ceil(totalTransactions / pageSize);
@@ -88,136 +95,163 @@ export default function TransactionTable({
   const endIndex = Math.min(currentPage * pageSize, totalTransactions);
 
   return (
-      <div>
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-700">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 w-24">
-                  <button
-                    onClick={() => handleSort('date', sortField, sortDirection, onSortChange)}
-                    className="group flex items-center gap-1 hover:text-white transition-colors"
-                  >
-                    Date
-                    {getSortIcon('date', sortField, sortDirection)}
-                  </button>
+    <div>
+      {/* Table with optimized column widths */}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[700px]">
+          <thead className="bg-gray-700">
+            <tr>
+              {/* Date - More compact */}
+              <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 w-20">
+                <button
+                  onClick={() => handleSort('date', sortField, sortDirection, onSortChange)}
+                  className="group flex items-center gap-1 hover:text-white transition-colors"
+                >
+                  Date
+                  {getSortIcon('date', sortField, sortDirection)}
+                </button>
+              </th>
+              
+              {/* Description - Flexible but constrained */}
+              <th className="px-2 py-2 text-left text-xs font-medium text-gray-300">
+                <button
+                  onClick={() => handleSort('description', sortField, sortDirection, onSortChange)}
+                  className="group flex items-center gap-1 hover:text-white transition-colors"
+                >
+                  Description
+                  {getSortIcon('description', sortField, sortDirection)}
+                </button>
+              </th>
+              
+              {/* Category - Compact */}
+              <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 w-24">
+                <button
+                  onClick={() => handleSort('category', sortField, sortDirection, onSortChange)}
+                  className="group flex items-center gap-1 hover:text-white transition-colors"
+                >
+                  Category
+                  {getSortIcon('category', sortField, sortDirection)}
+                </button>
+              </th>
+              
+              {/* Amount - Right aligned and compact */}
+              <th className="px-2 py-2 text-right text-xs font-medium text-gray-300 w-24">
+                <button
+                  onClick={() => handleSort('amount', sortField, sortDirection, onSortChange)}
+                  className="group flex items-center justify-end gap-1 hover:text-white transition-colors"
+                >
+                  Amount
+                  {getSortIcon('amount', sortField, sortDirection)}
+                </button>
+              </th>
+              
+              {/* Source - Compact */}
+              <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 w-20">
+                <button
+                  onClick={() => handleSort('source', sortField, sortDirection, onSortChange)}
+                  className="group flex items-center gap-1 hover:text-white transition-colors"
+                >
+                  Source
+                  {getSortIcon('source', sortField, sortDirection)}
+                </button>
+              </th>
+              
+              {/* Actions - Minimal width */}
+              {showEditButton && (
+                <th className="px-1 py-2 text-center text-xs font-medium text-gray-300 w-12">
+                  Edit
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 w-2/5">
-                  <button
-                    onClick={() => handleSort('description', sortField, sortDirection, onSortChange)}
-                    className="group flex items-center gap-1 hover:text-white transition-colors"
+              )}
+            </tr>
+          </thead>
+          
+          <tbody className="divide-y divide-gray-700">
+            {transactions.map((transaction) => (
+              <tr key={transaction.id} className="hover:bg-gray-700/50">
+                {/* Date - Compact format */}
+                <td className="px-2 py-2 text-xs text-gray-300">
+                  {formatDate(transaction.date)}
+                </td>
+                
+                {/* Description - Truncated with tooltip */}
+                <td className="px-2 py-2 text-xs text-white">
+                  <div 
+                    className="truncate" 
+                    title={transaction.description}
                   >
-                    Description
-                    {getSortIcon('description', sortField, sortDirection)}
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 w-28">
-                  <button
-                    onClick={() => handleSort('category', sortField, sortDirection, onSortChange)}
-                    className="group flex items-center gap-1 hover:text-white transition-colors"
-                  >
-                    Category
-                    {getSortIcon('category', sortField, sortDirection)}
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-gray-300 w-24">
-                  <button
-                    onClick={() => handleSort('amount', sortField, sortDirection, onSortChange)}
-                    className="group flex items-center gap-1 hover:text-white transition-colors ml-auto"
-                  >
-                    Amount
-                    {getSortIcon('amount', sortField, sortDirection)}
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 w-20">
-                  <button
-                    onClick={() => handleSort('source', sortField, sortDirection, onSortChange)}
-                    className="group flex items-center gap-1 hover:text-white transition-colors"
-                  >
-                    Source
-                    {getSortIcon('source', sortField, sortDirection)}
-                  </button>
-                </th>
+                    {transaction.description}
+                  </div>
+                </td>
+                
+                {/* Category - Smaller badge */}
+                <td className="px-2 py-2 text-xs">
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-600/20 text-blue-400 truncate max-w-full">
+                    {transaction.category}
+                  </span>
+                </td>
+                
+                {/* Amount - Right aligned, compact font */}
+                <td className="px-2 py-2 text-xs text-right font-mono">
+                  <span className={transaction.amount > 0 ? 'text-red-400' : 'text-green-400'}>
+                    {transaction.amount > 0 ? '+' : '-'}{formatCurrency(transaction.amount)}
+                  </span>
+                </td>
+                
+                {/* Source - Truncated */}
+                <td className="px-2 py-2 text-xs text-gray-400">
+                  <div className="max-w-full truncate capitalize" title={transaction.source}>
+                    {transaction.source}
+                  </div>
+                </td>
+                
+                {/* Actions - Minimal padding */}
                 {showEditButton && (
-                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-300 w-16">
-                    Actions
-                  </th>
+                  <td className="px-1 py-2 text-center">
+                    <button
+                      onClick={() => setEditingTransaction(transaction)}
+                      className="text-gray-400 hover:text-blue-400 transition-colors p-0.5"
+                      title="Edit transaction"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                    </button>
+                  </td>
                 )}
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-700">
-              {transactions.map((transaction) => (
-                <tr key={transaction.id} className="hover:bg-gray-700/50">
-                  <td className="px-4 py-3 text-sm text-gray-300">
-                    {formatDate(transaction.date)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-white font-medium">
-                    <div className="max-w-full truncate" title={transaction.description}>
-                      {transaction.description}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-600/20 text-blue-400">
-                      {transaction.category}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-right font-mono">
-                    <span className={transaction.amount > 0 ? 'text-red-400' : 'text-green-400'}>
-                      {transaction.amount > 0 ? '+' : '-'}{formatCurrency(transaction.amount)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-400 capitalize">
-                    {transaction.source}
-                  </td>
-                  {/* NEW: Actions column */}
-                  {showEditButton && (
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => setEditingTransaction(transaction)}
-                        className="text-gray-400 hover:text-blue-400 transition-colors p-1"
-                        title="Edit transaction"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      {/* Pagination */}
-      <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-4 border-t border-gray-700 gap-4">
-        <div className="flex items-center gap-4">
-          <div className="text-sm text-gray-400">
-            Showing {startIndex} to {endIndex} of {totalTransactions.toLocaleString()} results
+      {/* Compact Pagination */}
+      <div className="flex flex-col sm:flex-row items-center justify-between px-3 py-3 border-t border-gray-700 gap-3">
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-gray-400">
+            {startIndex}-{endIndex} of {totalTransactions.toLocaleString()}
           </div>
           
           <select
             value={pageSize}
             onChange={(e) => onPageSizeChange(parseInt(e.target.value))}
-            className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            <option value={25}>25 per page</option>
-            <option value={50}>50 per page</option>
-            <option value={100}>100 per page</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => onPageChange(currentPage - 1)}
             disabled={currentPage <= 1}
-            className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-1.5 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-3 h-3" />
           </button>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              let pageNum: number; // Fix: Explicitly type pageNum as number
+              let pageNum: number;
               if (totalPages <= 5) {
                 pageNum = i + 1;
               } else if (currentPage <= 3) {
@@ -232,7 +266,7 @@ export default function TransactionTable({
                 <button
                   key={pageNum}
                   onClick={() => onPageChange(pageNum)}
-                  className={`px-3 py-1 text-sm rounded ${
+                  className={`px-2 py-1 text-xs rounded ${
                     currentPage === pageNum
                       ? 'bg-blue-600 text-white'
                       : 'text-gray-400 hover:text-white hover:bg-gray-700'
@@ -247,21 +281,20 @@ export default function TransactionTable({
           <button
             onClick={() => onPageChange(currentPage + 1)}
             disabled={currentPage >= totalPages}
-            className="p-2 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-1.5 text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-3 h-3" />
           </button>
         </div>
       </div>
 
-      {/* NEW: Edit Modal */}
+      {/* Edit Modal */}
       {editingTransaction && (
         <TransactionEditModal
           transaction={editingTransaction}
           isOpen={!!editingTransaction}
           onClose={() => setEditingTransaction(null)}
           onSuccess={() => {
-            // Transaction table will automatically update due to query invalidation
             console.log('Transaction updated successfully');
           }}
         />

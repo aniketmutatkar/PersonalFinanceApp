@@ -266,15 +266,15 @@ export default function TransactionExplorerPage() {
       )}
 
       {/* Main Content Area - Filters + Table */}
-      <div className="flex-1 flex gap-6">
-        {/* Left Sidebar for Filters */}
-        <div className="w-80 flex-shrink-0 bg-gray-800 border border-gray-700 rounded-lg h-fit">
-          <div className="p-6">
-            <div className="flex items-center gap-2 mb-6">
-              <Filter className="w-5 h-5 text-blue-400" />
-              <h2 className="font-medium text-white">Filters</h2>
+      <div className="flex-1 flex gap-4">
+        {/* Left Sidebar for Filters - Made narrower */}
+        <div className="w-64 flex-shrink-0 bg-gray-800 border border-gray-700 rounded-lg h-fit">
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Filter className="w-4 h-4 text-blue-400" />
+              <h2 className="text-sm font-medium text-white">Filters</h2>
               {(filters.categories.length > 0 || filters.description || filters.month) && (
-                <span className="text-xs bg-blue-600 text-white px-2 py-1 rounded-full ml-auto">
+                <span className="text-xs bg-blue-600 text-white px-1.5 py-0.5 rounded-full ml-auto">
                   {filters.categories.length + (filters.description ? 1 : 0) + (filters.month ? 1 : 0)}
                 </span>
               )}
@@ -290,10 +290,10 @@ export default function TransactionExplorerPage() {
 
             {/* Clear All Button */}
             {hasActiveFilters && (
-              <div className="mt-6">
+              <div className="mt-4">
                 <button
                   onClick={handleClearFilters}
-                  className="w-full px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-600 rounded-lg hover:border-gray-500 transition-colors"
+                  className="w-full px-3 py-1.5 text-xs text-gray-400 hover:text-white border border-gray-600 rounded-md hover:border-gray-500 transition-colors"
                 >
                   Clear All Filters
                 </button>

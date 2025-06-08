@@ -11,7 +11,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
     <div className="flex h-screen bg-gray-900">
       <Navigation />
       <main className="flex-1 overflow-auto">
-        <div className="p-10 h-full">
+        {/* Reduced padding from p-10 to p-6 for more usable space */}
+        <div className="p-6 h-full">
           {children}
         </div>
       </main>

@@ -13,15 +13,11 @@ import InvestmentTrends from '../components/investments/InvestmentTrends';
 import AccountComparison from '../components/investments/AccountComparison';
 import InvestmentPatterns from '../components/investments/InvestmentPatterns';
 import PortfolioValueChart from '../components/portfolio/PortfolioValueChart';
-import ManualBalanceEntry from '../components/portfolio/ManualBalanceEntry';
-import PDFStatementUpload from '../components/portfolio/PDFStatementUpload';
 
 export default function InvestmentView() {
   const [selectedPeriod, setSelectedPeriod] = useState("all");
-  const [showManualEntry, setShowManualEntry] = useState(false);
-  const [showPDFUpload, setShowPDFUpload] = useState(false);
   
-  // Portfolio Performance Data (NEW)
+  // Portfolio Performance Data
   const { 
     data: portfolioOverview, 
     isLoading: portfolioLoading, 
@@ -53,15 +49,9 @@ export default function InvestmentView() {
   // Check for critical errors
   const hasError = portfolioError || trendsError;
 
-  // DEBUG: Log the data (remove after testing)
-  console.log('🔍 Portfolio Overview:', portfolioOverview);
-  console.log('🔍 Portfolio Trends:', portfolioTrends);
-  console.log('🔍 Loading States:', { portfolioLoading, trendsLoading });
-  console.log('🔍 Should render chart?', !!(portfolioTrends && !trendsLoading));
-
   return (
     <div className="space-y-8">
-      {/* Enhanced Page Header */}
+      {/* Clean Page Header - Analytics Focus */}
       <div className="border-b border-gray-700 pb-6">
         <div className="flex items-center justify-between">
           <div>
@@ -69,25 +59,6 @@ export default function InvestmentView() {
             <p className="text-gray-400 mt-2">
               Real portfolio performance, account allocation, and growth tracking across all platforms.
             </p>
-          </div>
-          
-          {/* Enhanced Add Balance Section */}
-          <div className="flex space-x-3">
-            <button
-              onClick={() => setShowManualEntry(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-            >
-              <span className="text-sm">📊</span>
-              <span>Manual Entry</span>
-            </button>
-            
-            <button
-              onClick={() => setShowPDFUpload(true)}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-            >
-              <span className="text-sm">📄</span>
-              <span>Upload PDF</span>
-            </button>
           </div>
         </div>
         
@@ -333,39 +304,19 @@ export default function InvestmentView() {
           </div>
         </div>
       )}
-
-      {/* Manual Balance Entry Modal */}
-      <ManualBalanceEntry 
-        isOpen={showManualEntry}
-        onClose={() => setShowManualEntry(false)}
-        onBalanceAdded={() => {
-          console.log('Balance added successfully!');
-          // Modal will auto-close after success message
-        }}
-      />
-
-      {/* PDF Statement Upload */}
-      <PDFStatementUpload 
-        isOpen={showPDFUpload}
-        onClose={() => setShowPDFUpload(false)}
-        onBalanceAdded={() => {
-          console.log('Balance added from PDF!');
-          // Modal will auto-close after success
-        }}
-      />
       
       {/* Development Note */}
       <div className="bg-blue-900/10 border border-blue-800/20 rounded-lg p-4">
         <div className="flex items-start space-x-3">
           <span className="text-blue-400 text-lg">🚀</span>
           <div>
-            <h4 className="text-blue-300 font-medium text-sm">Enhanced with Real Portfolio Data!</h4>
+            <h4 className="text-blue-300 font-medium text-sm">Pure Analytics Dashboard</h4>
             <p className="text-blue-200/80 text-xs mt-1">
-              Now showing actual portfolio performance, growth rates, and real account values alongside deposit tracking.
+              Focused on portfolio performance and insights. All data uploads now handled via the unified Upload Center.
             </p>
           </div>
         </div>
       </div>
     </div>
   );
-  }
+}

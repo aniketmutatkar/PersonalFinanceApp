@@ -1,5 +1,5 @@
 // src/components/layout/Navigation.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   Home, 
@@ -9,43 +9,117 @@ import {
   DollarSign,
   Search,  // Transaction Explorer
   TrendingUp,  // Add TrendingUp icon for Year Analysis
-  PiggyBank
+  PiggyBank,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
-const navItems = [
+// Main navigation items (data views)
+const mainNavItems = [
   { to: '/', icon: Home, label: 'Dashboard' },
   { to: '/monthly', icon: Calendar, label: 'Monthly' },
-  { to: '/year-analysis', icon: TrendingUp, label: 'Year Analysis' }, // Add this line
+  { to: '/year-analysis', icon: TrendingUp, label: 'Year Analysis' },
   { to: '/budget', icon: Target, label: 'Budget' },
   { to: '/transactions', icon: Search, label: 'Transactions' },
   { to: '/investments', icon: PiggyBank, label: 'Investments' },
+];
+
+// Utility items (bottom section)
+const utilityNavItems = [
   { to: '/upload', icon: Upload, label: 'Upload' },
 ];
 
 export default function Navigation() {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const toggleCollapse = () => {
+    setIsCollapsed(!isCollapsed);
+  };
+
   return (
-    <nav className="w-64 bg-gray-800 border-r border-gray-700">
-      <div className="p-6">
-        <div className="flex items-center space-x-2 mb-8">
-          <DollarSign className="h-8 w-8 text-green-500" />
-          <h1 className="text-xl font-bold text-white">Finance Tracker</h1>
+    <nav className={`${isCollapsed ? 'w-16' : 'w-48'} bg-gray-800 border-r border-gray-700 flex flex-col transition-all duration-300 ease-in-out`}>
+      <div className="flex-1 p-4">
+        {/* Header with collapse button */}
+        <div className="flex items-center justify-between mb-6">
+          {!isCollapsed && (
+            <div className="flex items-center space-x-2">
+              <DollarSign className="h-6 w-6 text-green-500" />
+              <h1 className="text-lg font-bold text-white">Finance Tracker</h1>
+            </div>
+          )}
+          
+          <button
+            onClick={toggleCollapse}
+            className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isCollapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+          </button>
         </div>
         
-        <ul className="space-y-2">
-          {navItems.map(({ to, icon: Icon, label }) => (
+        {/* Main navigation items */}
+        <ul className="space-y-1">
+          {mainNavItems.map(({ to, icon: Icon, label }) => (
             <li key={to}>
               <NavLink
                 to={to}
                 className={({ isActive }) =>
-                  `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                  `flex items-center ${isCollapsed ? 'justify-center px-3 py-3' : 'space-x-2.5 px-3 py-2.5'} rounded-md transition-colors group relative ${
                     isActive
                       ? 'bg-blue-600 text-white'
                       : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                   }`
                 }
+                title={isCollapsed ? label : undefined}
               >
-                <Icon className="h-5 w-5" />
-                <span className="font-medium">{label}</span>
+                <Icon className="h-4 w-4 flex-shrink-0" />
+                {!isCollapsed && (
+                  <span className="font-medium text-sm">{label}</span>
+                )}
+                
+                {/* Tooltip for collapsed state */}
+                {isCollapsed && (
+                  <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+                    {label}
+                  </div>
+                )}
+              </NavLink>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Utility section at bottom */}
+      <div className="p-4 border-t border-gray-700">
+        <ul className="space-y-1">
+          {utilityNavItems.map(({ to, icon: Icon, label }) => (
+            <li key={to}>
+              <NavLink
+                to={to}
+                className={({ isActive }) =>
+                  `flex items-center ${isCollapsed ? 'justify-center px-3 py-3' : 'space-x-2.5 px-3 py-2.5'} rounded-md transition-colors group relative ${
+                    isActive
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                  }`
+                }
+                title={isCollapsed ? label : undefined}
+              >
+                <Icon className="h-4 w-4 flex-shrink-0" />
+                {!isCollapsed && (
+                  <span className="font-medium text-sm">{label}</span>
+                )}
+                
+                {/* Tooltip for collapsed state */}
+                {isCollapsed && (
+                  <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+                    {label}
+                  </div>
+                )}
               </NavLink>
             </li>
           ))}
