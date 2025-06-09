@@ -1,10 +1,9 @@
 // src/pages/YearAnalysisPage.tsx
 import React, { useState, useMemo } from 'react';
-import { useYearComparison, useSpendingPatterns } from '../hooks/useApiData';
+import { useYearComparison } from '../hooks/useApiData';
 import YearSelector from '../components/analytics/YearSelector';
 import YearTrendsChart from '../components/analytics/YearTrendsChart';
 import CategoryEvolution from '../components/analytics/CategoryEvolution';
-import PatternInsights from '../components/analytics/PatternInsights';
 import LoadingSkeleton from '../components/ui/LoadingSkeleton';
 
 export default function YearAnalysisPage() {
@@ -13,12 +12,6 @@ export default function YearAnalysisPage() {
     isLoading: yearLoading, 
     isError: yearError 
   } = useYearComparison();
-  
-  const { 
-    data: patternsData, 
-    isLoading: patternsLoading, 
-    isError: patternsError 
-  } = useSpendingPatterns();
 
   // Initialize with all available years
   const availableYears = useMemo(() => {
@@ -42,45 +35,32 @@ export default function YearAnalysisPage() {
       return null;
     }
 
-    console.log('Year comparison data:', yearComparisonData); // Debug log
-    
     const yearsToAnalyze = selectedYears.length > 0 
       ? selectedYears.map(String)
       : Object.keys(yearComparisonData.years);
 
     const validYears = yearsToAnalyze.filter(year => yearComparisonData.years[year]);
-    console.log('Valid years for analysis:', validYears); // Debug log
 
     if (validYears.length === 0) return null;
 
-    // Debug: Log each year's data structure
-    validYears.forEach(year => {
-      console.log(`Year ${year} data:`, yearComparisonData.years[year]);
-    });
-
-    // Try different field names that might exist in your backend
+    // Calculate totals using the correct field names
     const totalIncome = validYears.reduce((sum, year) => {
       const yearData = yearComparisonData.years[year];
-      const income = Number(yearData.income || yearData.total_income || yearData.average_monthly_income || 0);
-      console.log(`Year ${year} income: ${income} (from ${yearData.income || yearData.total_income || yearData.average_monthly_income})`);
+      const income = Number(yearData.total_income || 0);
       return sum + income;
     }, 0);
 
     const totalSpending = validYears.reduce((sum, year) => {
       const yearData = yearComparisonData.years[year];
-      const spending = Number(yearData.spending || yearData.total_spending || yearData.average_monthly_spending || 0);
-      console.log(`Year ${year} spending: ${spending} (from ${yearData.spending || yearData.total_spending || yearData.average_monthly_spending})`);
+      const spending = Number(yearData.total_spending || 0);
       return sum + spending;
     }, 0);
 
     const totalInvestments = validYears.reduce((sum, year) => {
       const yearData = yearComparisonData.years[year];
-      const investments = Number(yearData.investments || yearData.total_investments || yearData.average_monthly_investments || 0);
-      console.log(`Year ${year} investments: ${investments} (from ${yearData.investments || yearData.total_investments || yearData.average_monthly_investments})`);
+      const investments = Number(yearData.total_investments || 0);
       return sum + investments;
     }, 0);
-
-    console.log('Totals:', { totalIncome, totalSpending, totalInvestments }); // Debug log
 
     const avgIncome = totalIncome / validYears.length;
     const avgSpending = totalSpending / validYears.length;
@@ -106,7 +86,7 @@ export default function YearAnalysisPage() {
     };
   }, [yearComparisonData, selectedYears]);
 
-  if (yearError || patternsError) {
+  if (yearError) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
@@ -127,8 +107,6 @@ export default function YearAnalysisPage() {
         
         <div className="grid grid-cols-12 gap-8 h-full">
           <LoadingSkeleton variant="metric" className="col-span-12 h-24" />
-          <LoadingSkeleton variant="list" lines={8} className="col-span-8 h-96" />
-          <LoadingSkeleton variant="list" lines={6} className="col-span-4 h-96" />
           <LoadingSkeleton variant="list" lines={8} className="col-span-6 h-96" />
           <LoadingSkeleton variant="list" lines={8} className="col-span-6 h-96" />
         </div>
@@ -143,7 +121,7 @@ export default function YearAnalysisPage() {
         <div>
           <h1 className="text-5xl font-bold text-white mb-4">Year Analysis</h1>
           <p className="text-xl text-gray-400">
-            Multi-year trends, category evolution, and spending patterns
+            Multi-year trends and category evolution analysis
           </p>
         </div>
         
@@ -185,25 +163,18 @@ export default function YearAnalysisPage() {
         </div>
       )}
 
-      <div className="flex-1 grid grid-cols-12 gap-8">
-        {/* Pattern Insights - Top Row (moved up since it's overall data) */}
-        <div className="col-span-12">
-          <PatternInsights 
-            patternsData={patternsData}
-            isLoading={patternsLoading}
-          />
-        </div>
-
-        {/* Year-over-Year Trends - Middle Row */}
-        <div className="col-span-12">
+      {/* Main Charts - Clean 2x1 Layout */}
+      <div className="flex-1 grid grid-cols-1 gap-8">
+        {/* Year-over-Year Trends */}
+        <div className="col-span-1">
           <YearTrendsChart 
             yearData={yearComparisonData.years}
             selectedYears={selectedYears}
           />
         </div>
 
-        {/* Category Evolution - Bottom Row (wider now) */}
-        <div className="col-span-12">
+        {/* Category Evolution */}
+        <div className="col-span-1">
           <CategoryEvolution 
             yearData={yearComparisonData.years}
             selectedYears={selectedYears}

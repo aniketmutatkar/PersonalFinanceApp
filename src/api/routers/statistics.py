@@ -9,11 +9,13 @@ from datetime import datetime
 from src.api.dependencies import (
     get_monthly_summary_repository, 
     get_transaction_repository,
-    get_config_manager
+    get_config_manager,
+    get_financial_metrics_service
 )
 from src.repositories.monthly_summary_repository import MonthlySummaryRepository
 from src.repositories.transaction_repository import TransactionRepository
 from src.config.config_manager import ConfigManager
+from src.services.financial_metrics_service import FinancialMetricsService  # NEW
 
 router = APIRouter()
 
@@ -21,10 +23,11 @@ router = APIRouter()
 async def get_comprehensive_financial_overview(
     monthly_summary_repo: MonthlySummaryRepository = Depends(get_monthly_summary_repository),
     transaction_repo: TransactionRepository = Depends(get_transaction_repository),
-    config_manager: ConfigManager = Depends(get_config_manager)
+    config_manager: ConfigManager = Depends(get_config_manager),
+    financial_metrics_service: FinancialMetricsService = Depends(get_financial_metrics_service)  # NEW
 ):
     """
-    Get comprehensive financial overview with actionable insights
+    Get comprehensive financial overview with actionable insights + financial health metrics
     """
     try:
         # Get all monthly summaries
@@ -106,11 +109,20 @@ async def get_comprehensive_financial_overview(
         highest_month = max(summaries, key=lambda s: float(s.total_minus_invest))
         lowest_month = min(summaries, key=lambda s: float(s.total_minus_invest))
         
+        # NEW: Calculate financial health metrics
+        runway_metrics = financial_metrics_service.calculate_financial_runway()
+        net_worth_metrics = financial_metrics_service.calculate_net_worth()
+        
+        # NEW: Calculate combined financial stability assessment
+        financial_stability = _assess_financial_stability(
+            runway_metrics, net_worth_metrics, overall_savings_rate, monthly_cash_flow
+        )
+        
         return {
             "data_available": True,
             "date_range": date_range,
             
-            # Core metrics
+            # Core metrics (existing)
             "financial_summary": {
                 "total_income": round(total_income, 2),
                 "total_spending": round(total_spending, 2),
@@ -128,7 +140,7 @@ async def get_comprehensive_financial_overview(
                 "investment_rate": round(investment_rate, 1)  # Now shows % of income invested
             },
             
-            # Spending intelligence
+            # Spending intelligence (existing)
             "spending_intelligence": {
                 "top_categories": [
                     {"category": cat, "total_amount": round(total, 2), "monthly_average": round(total / len(summaries), 2)}
@@ -139,7 +151,7 @@ async def get_comprehensive_financial_overview(
                 "fixed_expenses": spending_patterns.get("fixed_expenses", 0)
             },
             
-            # Budget and warnings
+            # Budget and warnings (existing)
             "budget_health": {
                 "adherence_score": budget_adherence.get("score", 0),
                 "categories_on_track": budget_adherence.get("on_track", 0),
@@ -147,10 +159,20 @@ async def get_comprehensive_financial_overview(
                 "alert_flags": alert_flags
             },
             
-            # Year-over-year trends
+            # NEW: Financial health metrics
+            "financial_health": {
+                "runway": runway_metrics,
+                "net_worth": net_worth_metrics,
+                "stability_assessment": financial_stability,
+                "key_insights": _generate_financial_insights(
+                    runway_metrics, net_worth_metrics, spending_patterns, overall_savings_rate
+                )
+            },
+            
+            # Year-over-year trends (existing)
             "yearly_trends": yearly_analysis,
             
-            # Spending extremes
+            # Spending extremes (existing)
             "spending_extremes": {
                 "highest_month": {
                     "month_year": highest_month.month_year,
@@ -165,6 +187,98 @@ async def get_comprehensive_financial_overview(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating comprehensive overview: {str(e)}")
+
+
+def _assess_financial_stability(runway_metrics, net_worth_metrics, savings_rate, monthly_cash_flow):
+    """Assess overall financial stability based on multiple metrics"""
+    
+    runway_months = runway_metrics.get("runway_months", 0)
+    liquidity_ratio = net_worth_metrics.get("liquidity_ratio", 0)
+    
+    # Score each component (0-100)
+    runway_score = min(100, runway_months * 20)  # 5+ months = 100
+    liquidity_score = min(100, liquidity_ratio * 500)  # 20%+ = 100
+    savings_score = min(100, savings_rate * 5)  # 20%+ = 100
+    cash_flow_score = 100 if monthly_cash_flow > 0 else max(0, 50 + monthly_cash_flow / 1000)
+    
+    # Weighted average
+    overall_score = (runway_score * 0.3 + liquidity_score * 0.2 + 
+                    savings_score * 0.3 + cash_flow_score * 0.2)
+    
+    if overall_score >= 80:
+        status = "Excellent"
+    elif overall_score >= 65:
+        status = "Good"
+    elif overall_score >= 50:
+        status = "Fair"
+    else:
+        status = "Needs Attention"
+    
+    return {
+        "overall_score": round(overall_score, 1),
+        "status": status,
+        "component_scores": {
+            "runway": round(runway_score, 1),
+            "liquidity": round(liquidity_score, 1),
+            "savings": round(savings_score, 1),
+            "cash_flow": round(cash_flow_score, 1)
+        }
+    }
+
+
+def _generate_financial_insights(runway_metrics, net_worth_metrics, spending_patterns, savings_rate):
+    """Generate actionable financial insights"""
+    
+    insights = []
+    
+    runway_months = runway_metrics.get("runway_months", 0)
+    liquidity_ratio = net_worth_metrics.get("liquidity_ratio", 0)
+    discretionary_ratio = spending_patterns.get("discretionary_ratio", 0)
+    
+    # Runway insights
+    if runway_months < 3:
+        insights.append({
+            "type": "warning",
+            "category": "emergency_fund",
+            "message": f"Emergency fund covers only {runway_months:.1f} months. Target: 3-6 months.",
+            "action": "Increase liquid savings"
+        })
+    elif runway_months > 12:
+        insights.append({
+            "type": "opportunity",
+            "category": "investment",
+            "message": f"High liquid reserves ({runway_months:.1f} months). Consider investing excess.",
+            "action": "Optimize cash allocation"
+        })
+    
+    # Liquidity insights
+    if liquidity_ratio < 0.10:
+        insights.append({
+            "type": "warning",
+            "category": "liquidity",
+            "message": f"Low liquidity ratio ({liquidity_ratio:.1%}). Target: 10-20%.",
+            "action": "Build emergency fund"
+        })
+    
+    # Spending insights
+    if discretionary_ratio > 40:
+        insights.append({
+            "type": "opportunity",
+            "category": "spending",
+            "message": f"High discretionary spending ({discretionary_ratio:.0f}%). Opportunity to optimize.",
+            "action": "Review variable expenses"
+        })
+    
+    # Savings rate insights
+    if savings_rate < 10:
+        insights.append({
+            "type": "warning",
+            "category": "savings",
+            "message": f"Low savings rate ({savings_rate:.1f}%). Target: 15-20%.",
+            "action": "Increase income or reduce expenses"
+        })
+    
+    return insights[:3]  # Limit to top 3 insights
 
 
 async def _analyze_spending_patterns(summaries, investment_categories):
@@ -218,70 +332,45 @@ async def _calculate_budget_adherence(summaries, config_manager, monthly_summary
             return {"score": 0, "on_track": 0, "total": 0}
         
         # Use most recent month for adherence calculation
-        recent_summary = summaries[0]
-        
-        on_track = 0
-        total_categories = 0
-        
-        for category, budget_amount in budgets.items():
-            if budget_amount <= 0:
-                continue
-                
-            actual_amount = float(recent_summary.category_totals.get(category, 0))
-            total_categories += 1
+        if summaries:
+            recent_summary = summaries[0]
+            on_track = 0
+            total_categories = len(budgets)
             
-            if actual_amount <= budget_amount:
-                on_track += 1
+            for category, budget_amount in budgets.items():
+                actual_amount = float(recent_summary.category_totals.get(category, 0))
+                if actual_amount <= budget_amount:
+                    on_track += 1
+            
+            score = (on_track / total_categories * 100) if total_categories > 0 else 0
+            return {"score": round(score, 1), "on_track": on_track, "total": total_categories}
         
-        adherence_score = (on_track / total_categories * 100) if total_categories > 0 else 0
-        
-        return {
-            "score": round(adherence_score, 1),
-            "on_track": on_track,
-            "total": total_categories
-        }
+        return {"score": 0, "on_track": 0, "total": len(budgets)}
         
     except Exception:
         return {"score": 0, "on_track": 0, "total": 0}
 
 
 async def _generate_alert_flags(summaries, category_totals, config_manager):
-    """Generate alert flags for concerning patterns"""
+    """Generate alert flags for concerning spending patterns"""
     flags = []
     
     try:
         budgets = config_manager.get_budgets()
-        recent_summary = summaries[0]
         
         # Check budget overruns
-        for category, budget_amount in budgets.items():
-            if budget_amount <= 0:
-                continue
-                
-            actual_amount = float(recent_summary.category_totals.get(category, 0))
-            if actual_amount > budget_amount * 1.1:  # 10% over budget
-                overage = ((actual_amount - budget_amount) / budget_amount * 100)
-                flags.append({
-                    "type": "budget_overage",
-                    "message": f"{category} spending up {overage:.0f}% vs budget",
-                    "severity": "warning"
-                })
+        if budgets and summaries:
+            recent_summary = summaries[0]
+            for category, budget_amount in budgets.items():
+                actual_amount = float(recent_summary.category_totals.get(category, 0))
+                if actual_amount > budget_amount * 1.2:  # 20% over budget
+                    flags.append({
+                        "type": "budget_overrun",
+                        "message": f"{category}: ${actual_amount:.0f} vs ${budget_amount:.0f} budget",
+                        "severity": "warning"
+                    })
         
-        # Check subscription costs
-        subscription_categories = ['Subscriptions', 'Netflix', 'Spotify', 'Apple']
-        subscription_total = sum(
-            float(recent_summary.category_totals.get(cat, 0)) 
-            for cat in subscription_categories
-        )
-        
-        if subscription_total > 75:  # Arbitrary threshold
-            flags.append({
-                "type": "subscription_creep",
-                "message": f"Subscription costs: ${subscription_total:.0f}/month",
-                "severity": "info"
-            })
-        
-        # Check consecutive months over spending target
+        # Check for unusually high spending months
         if len(summaries) >= 3:
             recent_spending = [float(s.total_minus_invest) for s in summaries[:3]]
             avg_spending = sum(float(s.total_minus_invest) for s in summaries) / len(summaries)
@@ -331,8 +420,6 @@ def _calculate_yearly_trends(summaries, investment_categories):
     
     return yearly_data
 
-
-# Keep the existing endpoints
 @router.get("/year-comparison")
 async def get_year_comparison(
     monthly_summary_repo: MonthlySummaryRepository = Depends(get_monthly_summary_repository)
@@ -344,166 +431,144 @@ async def get_year_comparison(
         summaries = monthly_summary_repo.find_all()
         
         if not summaries:
-            return {"error": "No data available", "years": {}}
+            return {"error": "No data available", "years": {}, "available_years": [], "comparison_ready": False}
         
         investment_categories = ['Acorns', 'Wealthfront', 'Robinhood', 'Schwab']
-        exclude_categories = ['Pay', 'Payment']
+        exclude_categories = ['Pay', 'Payment'] + investment_categories
         
-        year_data = {}
-        
+        # Group by year
+        years = {}
         for summary in summaries:
-            year = str(summary.year)
-            if year not in year_data:
-                year_data[year] = {
-                    "categories": {},
-                    "investments": 0,
-                    "income": 0,
+            year = summary.year
+            if year not in years:
+                years[year] = {
+                    "months": [],
                     "total_spending": 0,
-                    "months_count": 0
+                    "total_income": 0,
+                    "total_investments": 0,
+                    "categories": {},  # ADDED: Category breakdown for CategoryEvolution
+                    "months_count": 0  # ADDED: Count for proper averaging
                 }
             
-            year_data[year]["months_count"] += 1
-            year_data[year]["income"] += abs(float(summary.category_totals.get('Pay', 0)))
-            year_data[year]["total_spending"] += float(summary.total_minus_invest)
+            # Calculate spending (exclude investments and income)
+            monthly_spending = sum(
+                float(amount) for category, amount in summary.category_totals.items()
+                if category not in exclude_categories
+            )
             
-            # Category breakdowns
+            # Calculate income
+            monthly_income = abs(float(summary.category_totals.get('Pay', 0)))
+            
+            # Calculate investments
+            monthly_investments = sum(
+                abs(float(summary.category_totals.get(cat, 0))) for cat in investment_categories
+            )
+            
+            # Add to months array
+            years[year]["months"].append({
+                "month": summary.month,
+                "spending": round(monthly_spending, 2),
+                "income": round(monthly_income, 2)
+            })
+            
+            # Update totals
+            years[year]["total_spending"] += monthly_spending
+            years[year]["total_income"] += monthly_income
+            years[year]["total_investments"] += monthly_investments
+            years[year]["months_count"] += 1
+            
+            # ADDED: Build category breakdown for CategoryEvolution
             for category, amount in summary.category_totals.items():
-                if category in investment_categories:
-                    year_data[year]["investments"] += abs(float(amount))
-                elif category not in exclude_categories:
-                    if category not in year_data[year]["categories"]:
-                        year_data[year]["categories"][category] = 0
-                    year_data[year]["categories"][category] += float(amount)
+                if category not in exclude_categories:
+                    if category not in years[year]["categories"]:
+                        years[year]["categories"][category] = 0
+                    years[year]["categories"][category] += float(amount)
         
-        # Calculate yearly averages
-        for year in year_data:
-            months = year_data[year]["months_count"]
-            if months > 0:
-                year_data[year]["average_monthly_spending"] = round(year_data[year]["total_spending"] / months, 2)
-                year_data[year]["average_monthly_income"] = round(year_data[year]["income"] / months, 2)
-                year_data[year]["average_monthly_investments"] = round(year_data[year]["investments"] / months, 2)
+        # Calculate averages with the field names the frontend expects
+        for year_data in years.values():
+            month_count = year_data["months_count"]
+            if month_count > 0:
+                # Frontend expects these specific field names:
+                year_data["avg_monthly_spending"] = round(year_data["total_spending"] / month_count, 2)
+                year_data["avg_monthly_income"] = round(year_data["total_income"] / month_count, 2)
+                year_data["avg_monthly_investments"] = round(year_data["total_investments"] / month_count, 2)
+                
+                # ALSO add the alternative field names the frontend components expect:
+                year_data["average_monthly_spending"] = year_data["avg_monthly_spending"]
+                year_data["average_monthly_income"] = year_data["avg_monthly_income"] 
+                year_data["average_monthly_investments"] = year_data["avg_monthly_investments"]
+                
+                # Add months count for CategoryEvolution component
+                year_data["months"] = month_count
         
+        # FIXED: Return the complete response structure
         return {
-            "years": year_data,
-            "available_years": sorted([int(year) for year in year_data.keys()]),
-            "comparison_ready": len(year_data) > 1
+            "years": years,
+            "available_years": sorted(list(years.keys())),
+            "comparison_ready": len(years) > 1
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating year comparison: {str(e)}")
 
-
 @router.get("/patterns")
 async def get_spending_patterns(
-    monthly_summary_repo: MonthlySummaryRepository = Depends(get_monthly_summary_repository),
-    transaction_repo: TransactionRepository = Depends(get_transaction_repository)
+    monthly_summary_repo: MonthlySummaryRepository = Depends(get_monthly_summary_repository)
 ):
     """
-    Detect spending patterns and recurring transactions
+    Get detailed spending pattern analysis
     """
     try:
         summaries = monthly_summary_repo.find_all()
         
         if not summaries:
-            return {"patterns": [], "recurring_expenses": []}
+            return {"error": "No data available", "patterns": {}}
         
-        patterns = []
-        
-        # Pattern 1: Subscription creep (increasing subscription spending)
-        subscription_categories = ['Subscriptions', 'Netflix', 'Spotify', 'Apple']
-        subscription_totals = []
-        
-        for summary in summaries:
-            month_subscriptions = sum(
-                float(summary.category_totals.get(cat, 0)) 
-                for cat in subscription_categories 
-                if cat in summary.category_totals
-            )
-            subscription_totals.append({
-                "month_year": summary.month_year,
-                "total": month_subscriptions
-            })
-        
-        # Check for subscription creep (last 6 months vs previous 6 months)
-        if len(subscription_totals) >= 12:
-            recent_avg = statistics.mean([s["total"] for s in subscription_totals[:6]])
-            older_avg = statistics.mean([s["total"] for s in subscription_totals[6:12]])
-            
-            if recent_avg > older_avg * 1.2:  # 20% increase
-                patterns.append({
-                    "type": "subscription_creep",
-                    "severity": "warning",
-                    "message": f"Subscription spending increased {((recent_avg - older_avg) / older_avg * 100):.1f}% in recent months",
-                    "data": {
-                        "recent_average": round(recent_avg, 2),
-                        "previous_average": round(older_avg, 2)
-                    }
-                })
-        
-        # Pattern 2: Seasonal spending spikes
-        monthly_averages = {}
-        for summary in summaries:
-            month = summary.month
-            if month not in monthly_averages:
-                monthly_averages[month] = []
-            monthly_averages[month].append(float(summary.total_minus_invest))
-        
-        # Find months that are consistently higher than average
-        overall_avg = statistics.mean([float(s.total_minus_invest) for s in summaries])
-        seasonal_spikes = []
-        
-        for month, amounts in monthly_averages.items():
-            if len(amounts) >= 2:
-                month_avg = statistics.mean(amounts)
-                if month_avg > overall_avg * 1.3:  # 30% above average
-                    seasonal_spikes.append({
-                        "month": month,
-                        "average": round(month_avg, 2),
-                        "spike_percentage": round(((month_avg - overall_avg) / overall_avg * 100), 1)
-                    })
-        
-        if seasonal_spikes:
-            patterns.append({
-                "type": "seasonal_spikes",
-                "severity": "info",
-                "message": f"Consistent spending spikes detected in {len(seasonal_spikes)} months",
-                "data": {"spikes": seasonal_spikes}
-            })
-        
-        # Pattern 3: Investment consistency
         investment_categories = ['Acorns', 'Wealthfront', 'Robinhood', 'Schwab']
-        investment_amounts = []
+        exclude_categories = ['Pay', 'Payment'] + investment_categories
         
-        for summary in summaries:
-            month_investments = sum(
-                abs(float(summary.category_totals.get(cat, 0))) 
-                for cat in investment_categories
-            )
-            investment_amounts.append(month_investments)
-        
-        if investment_amounts and len(investment_amounts) >= 6:
-            investment_consistency = statistics.stdev(investment_amounts) / statistics.mean(investment_amounts) if statistics.mean(investment_amounts) > 0 else 0
+        # Calculate month-over-month changes
+        monthly_changes = []
+        for i in range(len(summaries) - 1):
+            current = float(summaries[i].total_minus_invest)
+            previous = float(summaries[i + 1].total_minus_invest)
+            change = ((current - previous) / previous * 100) if previous != 0 else 0
             
-            if investment_consistency < 0.2:  # Low variability = consistent
-                patterns.append({
-                    "type": "consistent_investing",
-                    "severity": "positive",
-                    "message": f"Consistent investment pattern detected (CV: {investment_consistency:.2f})",
-                    "data": {
-                        "average_monthly": round(statistics.mean(investment_amounts), 2),
-                        "consistency_score": round((1 - investment_consistency) * 100, 1)
-                    }
-                })
+            monthly_changes.append({
+                "month": summaries[i].month_year,
+                "spending": round(current, 2),
+                "change_percent": round(change, 1)
+            })
+        
+        # Calculate seasonal patterns (by month)
+        seasonal_data = {}
+        for summary in summaries:
+            month_name = summary.month
+            if month_name not in seasonal_data:
+                seasonal_data[month_name] = []
+            seasonal_data[month_name].append(float(summary.total_minus_invest))
+        
+        # Calculate seasonal averages
+        seasonal_averages = {}
+        for month, amounts in seasonal_data.items():
+            seasonal_averages[month] = {
+                "average_spending": round(sum(amounts) / len(amounts), 2),
+                "data_points": len(amounts),
+                "highest": round(max(amounts), 2),
+                "lowest": round(min(amounts), 2)
+            }
         
         return {
-            "patterns": patterns,
-            "pattern_count": len(patterns),
-            "analysis_period": {
-                "start": f"{summaries[-1].month} {summaries[-1].year}",
-                "end": f"{summaries[0].month} {summaries[0].year}",
-                "months_analyzed": len(summaries)
+            "monthly_changes": monthly_changes[:12],  # Last 12 months
+            "seasonal_patterns": seasonal_averages,
+            "volatility": {
+                "std_deviation": round(statistics.stdev([float(s.total_minus_invest) for s in summaries]), 2) if len(summaries) > 1 else 0,
+                "coefficient_of_variation": round(
+                    (statistics.stdev([float(s.total_minus_invest) for s in summaries]) / 
+                     statistics.mean([float(s.total_minus_invest) for s in summaries]) * 100), 2
+                ) if len(summaries) > 1 else 0
             }
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error detecting patterns: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error analyzing spending patterns: {str(e)}")

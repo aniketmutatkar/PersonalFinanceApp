@@ -70,83 +70,12 @@ export default function CategorySelector({
   };
 
   return (
-    <div className="relative" ref={dropdownRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-between w-72 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white hover:bg-gray-600 transition-colors"
-      >
-        <span className="text-sm">{getDisplayText()}</span>
-        <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-
-      {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
-          {/* Header with quick select options */}
-          <div className="p-3 border-b border-gray-600">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs text-gray-400 uppercase font-semibold">Quick Select</span>
-              <button
-                onClick={handleClearAll}
-                className="text-xs text-red-400 hover:text-red-300 transition-colors"
-              >
-                Clear All
-              </button>
-            </div>
-            <div className="flex gap-2">
-              {[3, 5, 8].map(count => (
-                <button
-                  key={count}
-                  onClick={() => handleSelectTop(count)}
-                  className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
-                >
-                  Top {count}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Category options */}
-          <div className="p-2">
-            <div className="text-xs text-gray-400 mb-2 px-2">
-              {selectedCategories.length}/{maxSelection} selected • Sorted by total spending
-            </div>
-            {availableCategories.map(({ category, totalAmount }) => (
-              <div
-                key={category}
-                onClick={() => handleCategoryToggle(category)}
-                className={`flex items-center justify-between px-3 py-2 rounded cursor-pointer transition-colors ${
-                  selectedCategories.includes(category) 
-                    ? 'bg-blue-600/20 border border-blue-500/30' 
-                    : 'hover:bg-gray-600'
-                } ${
-                  !selectedCategories.includes(category) && selectedCategories.length >= maxSelection
-                    ? 'opacity-50 cursor-not-allowed'
-                    : ''
-                }`}
-              >
-                <div className="flex-1">
-                  <span className="text-white text-sm">{category}</span>
-                  <div className="text-xs text-gray-400">{formatCurrency(totalAmount)}</div>
-                </div>
-                {selectedCategories.includes(category) && (
-                  <Check className="w-4 h-4 text-green-400" />
-                )}
-              </div>
-            ))}
-          </div>
-
-          {availableCategories.length === 0 && (
-            <div className="px-4 py-6 text-gray-400 text-center text-sm">
-              No categories available
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Selected categories pills (only show if <= 6 selected) */}
+    <div className="flex items-center gap-3">
+      {/* Selected categories pills - RIGHT TO LEFT ORDER */}
       {selectedCategories.length > 0 && selectedCategories.length <= 6 && (
-        <div className="flex flex-wrap gap-2 mt-3">
-          {selectedCategories.map((category) => (
+        <div className="flex flex-wrap gap-2 justify-end">
+          {/* Reverse the order so newest selections appear closest to the button */}
+          {[...selectedCategories].reverse().map((category) => (
             <div
               key={category}
               className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded-full text-xs"
@@ -162,6 +91,82 @@ export default function CategorySelector({
           ))}
         </div>
       )}
+
+      {/* Dropdown button - STAYS IN PLACE */}
+      <div className="relative" ref={dropdownRef}>
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center justify-between w-72 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white hover:bg-gray-600 transition-colors"
+        >
+          <span className="text-sm">{getDisplayText()}</span>
+          <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {/* FIXED: Right-aligned dropdown */}
+        {isOpen && (
+          <div className="absolute top-full right-0 mt-2 w-80 bg-gray-700 border border-gray-600 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
+            {/* Header with quick select options */}
+            <div className="p-3 border-b border-gray-600">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs text-gray-400 uppercase font-semibold">Quick Select</span>
+                <button
+                  onClick={handleClearAll}
+                  className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                >
+                  Clear All
+                </button>
+              </div>
+              <div className="flex gap-2">
+                {[3, 5, 8].map(count => (
+                  <button
+                    key={count}
+                    onClick={() => handleSelectTop(count)}
+                    className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                  >
+                    Top {count}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Category options */}
+            <div className="p-2">
+              <div className="text-xs text-gray-400 mb-2 px-2">
+                {selectedCategories.length}/{maxSelection} selected • Sorted by total spending
+              </div>
+              {availableCategories.map(({ category, totalAmount }) => (
+                <div
+                  key={category}
+                  onClick={() => handleCategoryToggle(category)}
+                  className={`flex items-center justify-between px-3 py-2 rounded cursor-pointer transition-colors ${
+                    selectedCategories.includes(category) 
+                      ? 'bg-blue-600/20 border border-blue-500/30' 
+                      : 'hover:bg-gray-600'
+                  } ${
+                    !selectedCategories.includes(category) && selectedCategories.length >= maxSelection
+                      ? 'opacity-50 cursor-not-allowed'
+                      : ''
+                  }`}
+                >
+                  <div className="flex-1">
+                    <span className="text-white text-sm">{category}</span>
+                    <div className="text-xs text-gray-400">{formatCurrency(totalAmount)}</div>
+                  </div>
+                  {selectedCategories.includes(category) && (
+                    <Check className="w-4 h-4 text-green-400" />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {availableCategories.length === 0 && (
+              <div className="px-4 py-6 text-gray-400 text-center text-sm">
+                No categories available
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

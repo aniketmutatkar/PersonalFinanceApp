@@ -81,6 +81,7 @@ export interface FinancialOverview {
   cash_flow_analysis: CashFlowAnalysis;
   spending_intelligence: SpendingIntelligence;
   budget_health: BudgetHealth;
+  financial_health: FinancialHealth;
   yearly_trends: Record<string, any>;
   spending_extremes: {
     highest_month: SpendingExtreme;
@@ -453,3 +454,46 @@ export const INVESTMENT_ACCOUNT_COLORS = {
   'Robinhood': '#F59E0B',   // Yellow
   'Schwab': '#EF4444',      // Red
 } as const;
+
+export interface RunwayMetrics {
+  total_liquid_assets: number;
+  checking_balance: number;
+  savings_balance: number;
+  wealthfront_cash: number;
+  monthly_expenses: number;
+  runway_months: number;
+  runway_status: string;
+}
+
+export interface NetWorthMetrics {
+  total_net_worth: number;
+  liquid_assets: number;
+  investment_assets: number;
+  liquidity_ratio: number;
+  liquidity_status: string;
+}
+
+export interface FinancialStabilityAssessment {
+  overall_score: number;
+  status: string;
+  component_scores: {
+    runway: number;
+    liquidity: number;
+    savings: number;
+    cash_flow: number;
+  };
+}
+
+export interface FinancialInsight {
+  type: 'warning' | 'opportunity' | 'info';
+  category: string;
+  message: string;
+  action: string;
+}
+
+export interface FinancialHealth {
+  runway: RunwayMetrics;
+  net_worth: NetWorthMetrics;
+  stability_assessment: FinancialStabilityAssessment;
+  key_insights: FinancialInsight[];
+}

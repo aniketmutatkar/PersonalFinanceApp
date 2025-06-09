@@ -82,6 +82,28 @@ export default function Dashboard() {
     }
   ];
 
+  // Helper function to get runway status color
+  const getRunwayVariant = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'excellent': return 'default';
+      case 'good': return 'default';
+      case 'fair': return 'accent';
+      case 'poor': return 'warning';
+      default: return 'default';
+    }
+  };
+
+  // Helper function to get stability status color
+  const getStabilityVariant = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'excellent': return 'hero';
+      case 'good': return 'default';
+      case 'fair': return 'accent';
+      case 'needs attention': return 'warning';
+      default: return 'default';
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Page Header */}
@@ -95,43 +117,113 @@ export default function Dashboard() {
       {/* Dashboard Grid - fills remaining height */}
       <div className="flex-1 grid grid-cols-12 gap-8">
         
-        {/* Hero Section: Net Worth & Cash Flow - Top Row */}
-        <div className="col-span-8 grid grid-cols-3 gap-8">
+        {/* Top Row: Financial Health Hero Section */}
+        <div className="col-span-12 grid grid-cols-5 gap-8">
+          
+          {/* Net Worth - Main Hero Card */}
           <MetricCard
-            title="Total Financial Growth"
-            value={formatCurrency(overview.financial_summary.financial_growth)}
-            subtitle={`${formatCurrency(overview.financial_summary.monthly_financial_growth)}/month average`}
+            title="Total Net Worth"
+            value={formatCurrency(overview.financial_health.net_worth.total_net_worth)}
+            subtitle={`${formatCurrency(overview.financial_health.net_worth.liquid_assets)} liquid • ${formatCurrency(overview.financial_health.net_worth.investment_assets)} invested`}
             variant="hero"
             className="col-span-2"
+            trend={{
+              value: overview.financial_health.net_worth.liquidity_status,
+              direction: 'up'
+            }}
           />
           
+          {/* Financial Runway */}
           <MetricCard
-            title="Monthly Cash Flow"
-            value={formatCurrency(overview.cash_flow_analysis.monthly_cash_flow)}
-            subtitle="Net cash position change"
+            title="Emergency Fund Runway"
+            value={`${overview.financial_health.runway.runway_months.toFixed(1)} months`}
+            subtitle={`${formatCurrency(overview.financial_health.runway.total_liquid_assets)} available`}
+            variant={getRunwayVariant(overview.financial_health.runway.runway_status)}
+            trend={{
+              value: overview.financial_health.runway.runway_status,
+              direction: overview.financial_health.runway.runway_months >= 6 ? 'up' : 
+                        overview.financial_health.runway.runway_months >= 3 ? 'neutral' : 'down'
+            }}
+          />
+          
+          {/* Financial Stability Score */}
+          <MetricCard
+            title="Financial Stability"
+            value={`${overview.financial_health.stability_assessment.overall_score}/100`}
+            subtitle={overview.financial_health.stability_assessment.status}
+            variant={getStabilityVariant(overview.financial_health.stability_assessment.status)}
+            trend={{
+              value: `${formatPercentage(overview.financial_summary.overall_savings_rate)} savings rate`,
+              direction: overview.financial_summary.overall_savings_rate > 15 ? 'up' : 'neutral'
+            }}
+          />
+          
+          {/* Liquidity Ratio */}
+          <MetricCard
+            title="Liquidity Ratio"
+            value={formatPercentage(overview.financial_health.net_worth.liquidity_ratio * 100)}
+            subtitle="Liquid vs Total Assets"
             variant="default"
+            trend={{
+              value: overview.financial_health.net_worth.liquidity_status,
+              direction: overview.financial_health.net_worth.liquidity_ratio > 0.15 ? 'up' : 'neutral'
+            }}
           />
         </div>
 
-        {/* Key Metrics - Top Right */}
-        <div className="col-span-4 grid grid-cols-2 gap-8">
+        {/* Second Row: Cash Flow & Investment Metrics */}
+        <div className="col-span-8 grid grid-cols-3 gap-8">
           <MetricCard
-            title="Savings Rate"
-            value={formatPercentage(overview.financial_summary.overall_savings_rate)}
-            subtitle={overview.financial_summary.overall_savings_rate > 20 ? "Excellent" : 
-                     overview.financial_summary.overall_savings_rate > 15 ? "Good" : "Needs Improvement"}
-            variant="accent"
+            title="Monthly Cash Flow"
+            value={formatCurrency(overview.cash_flow_analysis.monthly_cash_flow)}
+            subtitle="Net position change"
+            variant="default"
+            trend={{
+              value: `${formatCurrency(overview.financial_summary.monthly_financial_growth)}/mo growth`,
+              direction: overview.cash_flow_analysis.monthly_cash_flow > 0 ? 'up' : 'down'
+            }}
           />
           
           <MetricCard
             title="Investment Rate"
             value={formatPercentage(overview.cash_flow_analysis.investment_rate)}
-            subtitle="of total income"
-            variant="default"
+            subtitle="of income invested"
+            variant="accent"
+            trend={{
+              value: `${formatCurrency(overview.cash_flow_analysis.monthly_investments)}/mo`,
+              direction: overview.cash_flow_analysis.investment_rate > 15 ? 'up' : 'neutral'
+            }}
+          />
+          
+          <MetricCard
+            title="Savings Rate"
+            value={formatPercentage(overview.financial_summary.overall_savings_rate)}
+            subtitle={overview.financial_summary.overall_savings_rate > 20 ? "Excellent" : 
+                     overview.financial_summary.overall_savings_rate > 15 ? "Good" : "Needs Improvement"}
+            variant={overview.financial_summary.overall_savings_rate > 15 ? "default" : "warning"}
           />
         </div>
 
-        {/* Middle Section: Spending Intelligence */}
+        {/* Financial Insights & Alerts */}
+        <div className="col-span-4 grid grid-cols-1 gap-8">
+          <AlertCard
+            title="Financial Insights"
+            alerts={overview.financial_health.key_insights.map(insight => ({
+              type: insight.type,
+              message: insight.message,
+              severity: insight.type as 'info' | 'warning' | 'error'
+            }))}
+          />
+          
+          <MetricCard
+            title="Budget Adherence"
+            value={formatPercentage(overview.budget_health.adherence_score)}
+            subtitle={`${overview.budget_health.categories_on_track} of ${overview.budget_health.total_categories} categories on track`}
+            variant={overview.budget_health.adherence_score > 80 ? "default" : "warning"}
+          />
+        </div>
+
+        {/* Third Row: Spending Intelligence */}
         <div className="col-span-8 grid grid-cols-2 gap-8">
           <InsightCard
             title="Top Expense Categories"
@@ -146,34 +238,8 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Budget Health & Alerts - Middle Right */}
+        {/* Spending Extremes & Additional Alerts */}
         <div className="col-span-4 grid grid-cols-1 gap-8">
-          <MetricCard
-            title="Budget Adherence"
-            value={formatPercentage(overview.budget_health.adherence_score)}
-            subtitle={`${overview.budget_health.categories_on_track} of ${overview.budget_health.total_categories} categories on track`}
-            variant={overview.budget_health.adherence_score > 80 ? "default" : "warning"}
-          />
-          
-          <AlertCard
-            title="Alert Flags"
-            alerts={overview.budget_health.alert_flags || []}
-          />
-        </div>
-
-        {/* Bottom Row: Trends */}
-        <div className="col-span-12 grid grid-cols-3 gap-8">
-          <MetricCard
-            title="Monthly Income"
-            value={formatCurrency(overview.cash_flow_analysis.monthly_income)}
-            subtitle="Current average"
-            trend={{
-              value: `${formatCurrency(overview.financial_summary.total_income)} total`,
-              direction: 'up'
-            }}
-            variant="default"
-          />
-          
           <MetricCard
             title="Highest Spending Month"
             value={formatCurrency(overview.spending_extremes.highest_month.amount)}
