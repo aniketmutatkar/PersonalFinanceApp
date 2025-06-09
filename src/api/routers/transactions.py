@@ -189,7 +189,7 @@ async def create_transaction(
     try:
         # Ensure we have a proper date object
         tx_date = transaction.date
-        if isinstance(tx_date, string):
+        if isinstance(tx_date, str):
             from datetime import datetime
             tx_date = datetime.fromisoformat(tx_date).date()
         
