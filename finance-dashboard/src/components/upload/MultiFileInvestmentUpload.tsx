@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { Upload, FileText, Image, CheckCircle, AlertTriangle, X, Eye, Edit, Plus } from 'lucide-react';
+import { getApiBaseUrl } from '../../config/api';
 
 // Types for investment upload workflow
 interface ProcessedStatement {
@@ -115,7 +116,7 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
     }
 
     try {
-      const response = await fetch('http://192.168.1.226:8000/api/portfolio/balances', {
+      const response = await fetch(`${getApiBaseUrl()}/api/portfolio/balances`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -162,7 +163,7 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
     setIsReviewSaving(true);
 
     try {
-      const response = await fetch(`http://192.168.1.226:8000/api/portfolio/statements/${reviewingStatement.statement_id}/review-save`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/portfolio/statements/${reviewingStatement.statement_id}/review-save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -241,7 +242,7 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
         const formData = new FormData();
         formData.append('file', file);
 
-        const response = await fetch('http://192.168.1.226:8000/api/portfolio/statements/upload', {
+        const response = await fetch(`${getApiBaseUrl()}/api/portfolio/statements/upload`, {
           method: 'POST',
           body: formData,
         });
@@ -300,7 +301,7 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
     try {
       // Save each statement using quick-save
       for (const statement of successfulStatements) {
-        await fetch(`http://192.168.1.226:8000/api/portfolio/statements/${statement.statement_id}/quick-save`, {
+        await fetch(`${getApiBaseUrl()}/api/portfolio/statements/${statement.statement_id}/quick-save`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ confirm_duplicates: false }),
@@ -555,7 +556,7 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
                   </button>
                   {statement.fileType === 'pdf' && (
                     <button
-                      onClick={() => window.open(`http://192.168.1.226:8000/api/portfolio/statements/${statement.statement_id}/page-pdf`, '_blank')}
+                      onClick={() => window.open(`${getApiBaseUrl()}/api/portfolio/statements/${statement.statement_id}/page-pdf`, '_blank')}
                       className="flex items-center gap-1 bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-sm transition-colors"
                     >
                       <Eye className="w-3 h-3" />
@@ -632,7 +633,7 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
                     </div>
                     <div className="flex-1 min-h-0">
                       <iframe
-                        src={`http://192.168.1.226:8000/api/portfolio/statements/${reviewingStatement.statement_id}/page-pdf#zoom=100`}
+                        src={`${getApiBaseUrl()}/api/portfolio/statements/${reviewingStatement.statement_id}/page-pdf#zoom=100`}
                         className="w-full h-full border-0"
                         title={`Statement Page ${reviewingStatement.relevant_page || 1}`}
                       />

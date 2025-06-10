@@ -12,6 +12,7 @@ import {
   InvestmentOverviewData,
   InvestmentTrendsData,
   ManualBalanceCreate,
+  PortfolioTrends
 } from '../types/api';
 
 // Query keys for consistent caching
@@ -201,12 +202,14 @@ export const usePortfolioOverview = (asOfDate?: string) =>
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-export const usePortfolioTrends = (period: string = "1y") =>
-  useQuery({
-    queryKey: ['portfolioTrends', period],
+export function usePortfolioTrends(period?: string, options?: UseQueryOptions<PortfolioTrends>) {
+  return useQuery({
+    queryKey: ['portfolio-trends', period],
     queryFn: () => api.getPortfolioTrends(period),
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 10 * 60 * 1000,
+    ...options,
   });
+}
 
 export const useAllAccounts = () =>
   useQuery({

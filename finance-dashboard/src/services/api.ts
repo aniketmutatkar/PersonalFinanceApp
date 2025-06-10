@@ -32,11 +32,18 @@ import {
 export class FinanceTrackerApi {
   private baseUrl: string;
 
-  constructor(baseUrl = process.env.NODE_ENV === 'development' 
-    ? 'http://192.168.1.226:8000/api' 
-    : '/api'
-  ) {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl?: string) {
+    if (baseUrl) {
+      this.baseUrl = baseUrl;
+    } else if (process.env.NODE_ENV === 'development') {
+      // Use environment variables in development
+      const host = process.env.REACT_APP_API_HOST || 'localhost';
+      const port = process.env.REACT_APP_API_PORT || '8000';
+      this.baseUrl = `http://${host}:${port}/api`;
+    } else {
+      // Production uses relative URLs
+      this.baseUrl = '/api';
+    }
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -55,7 +62,7 @@ export class FinanceTrackerApi {
     };
     
     try {
-      console.log(`API Request: ${url}`); // Debug log for development
+      console.log(`📡 API Request: ${url}`);
       const response = await fetch(url, config);
       
       if (!response.ok) {
@@ -65,7 +72,7 @@ export class FinanceTrackerApi {
       
       return await response.json();
     } catch (error) {
-      console.error('API request error:', error);
+      console.error('❌ API request error:', error);
       throw error;
     }
   }
@@ -471,9 +478,10 @@ export class FinanceTrackerApi {
   }
 
   // Portfolio Trends
-  async getPortfolioTrends(period: string = "1y"): Promise<PortfolioTrends> {
-    return this.request(`/portfolio/trends?period=${period}`);
-  }
+  async getPortfolioTrends(period?: string): Promise<PortfolioTrends> {
+  const params = period ? `?period=${period}` : '';
+  return this.request<PortfolioTrends>(`/portfolio/trends${params}`);
+}
 
   // Account Performance
   async getAccountPerformance(accountId: number, period: string = "1y"): Promise<AccountPerformance> {

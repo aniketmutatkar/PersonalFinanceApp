@@ -1,6 +1,7 @@
 # src/api/main.py
 
 import os
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
@@ -9,6 +10,7 @@ from src.api.utils.error_handling import APIError, api_error_handler
 from src.api.routers import exports
 
 # Get environment
+load_dotenv()
 env = os.getenv("ENVIRONMENT", "development")
 
 # Create FastAPI application with enhanced metadata
@@ -50,12 +52,16 @@ if env == "production":
         "https://www.your-production-domain.com"
     ]
 else:
-    # Development CORS settings
+    # Development CORS settings - now using environment variables
+    frontend_host = os.getenv("API_CORS_FRONTEND_HOST", "localhost")
+    frontend_port = os.getenv("API_CORS_FRONTEND_PORT", "3000")
+    mobile_host = os.getenv("API_CORS_MOBILE_HOST", "localhost")
+    
     origins = [
         "http://localhost:3000",
         "http://127.0.0.1:3000", 
-        "http://192.168.1.226:3000",  # Your computer
-        "http://192.168.1.162:3000",  # Your mobile phone
+        f"http://{frontend_host}:{frontend_port}",  # Your computer
+        f"http://{mobile_host}:3000",  # Your mobile phone
     ]
 
 app.add_middleware(

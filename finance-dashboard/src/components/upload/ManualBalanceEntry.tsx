@@ -1,7 +1,8 @@
-// src/components/portfolio/ManualBalanceEntry.tsx
+// src/components/upload/ManualBalanceEntry.tsx
 import React, { useState, useEffect } from 'react';
 import { useAllAccounts } from '../../hooks/useApiData';
 import { useQueryClient } from '@tanstack/react-query';
+import { getApiBaseUrl } from '../../config/api';
 
 interface ManualBalanceEntryProps {
   isOpen: boolean;
@@ -64,7 +65,7 @@ export default function ManualBalanceEntry({
         ? `/api/portfolio/balances?force_override=true`
         : `/api/portfolio/balances`;
 
-      const response = await fetch(`http://192.168.1.226:8000${url}`, {
+      const response = await fetch(`${getApiBaseUrl()}${url}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
