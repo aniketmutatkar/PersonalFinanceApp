@@ -6,27 +6,26 @@ from datetime import date
 from decimal import Decimal
 from datetime import datetime
 from pydantic import BaseModel, validator
-from typing import Optional, Dict, Union
+from typing import Optional, Dict
 from src.models.portfolio_models import PortfolioBalance, DataSource
-import tempfile
 import os
+import re
 import uuid
 from fastapi import UploadFile, File
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
-from src.api.dependencies import get_portfolio_service, get_portfolio_repository
+from src.api.dependencies import get_portfolio_service, get_portfolio_repository, get_bank_balance_repository
 from src.services.portfolio_service import PortfolioService
 from src.repositories.portfolio_repository import PortfolioRepository
+from src.repositories.bank_balance_repository import BankBalanceRepository  # ADD THIS IMPORT
 from src.services.duplicate_detector import MonthlyDuplicateDetector
-from src.models.portfolio_models import StatementUpload
+from src.models.portfolio_models import StatementUpload, BankBalance, DataSource
 from src.services.pdf_processor import PDFProcessor
 from src.services.statement_parser import StatementParser
 
-router = APIRouter()
 
-# Response Models
-from pydantic import BaseModel
-from typing import Union
+router = APIRouter()
 
 class AccountPerformanceResponse(BaseModel):
     account_id: int
@@ -575,6 +574,194 @@ def match_account_intelligently(statement_data, all_accounts):
     print(f"❌ No matches found for {institution}")
     return None, []
 
+@router.post("/bank-statements/upload")
+async def upload_bank_statement(
+    file: UploadFile = File(...),
+    bank_repo: BankBalanceRepository = Depends(get_bank_balance_repository)
+):
+    """
+    Upload Wells Fargo bank statement PDF for OCR processing
+    FIXED: Now uses Wells Fargo-specific page detection to target summary page
+    """
+    try:
+        # Validate file
+        if not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported for bank statements")
+        
+        ensure_upload_directories()
+        
+        # Create unique filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_id = str(uuid.uuid4())[:8]
+        safe_filename = f"bank_{timestamp}_{unique_id}_{file.filename}"
+        full_pdf_path = os.path.join(UPLOAD_BASE_DIR, safe_filename)
+        
+        # Save full PDF
+        with open(full_pdf_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        print(f"📄 Saved bank statement PDF: {full_pdf_path}")
+        
+        # Step 1: Extract text with Wells Fargo-specific page detection
+        pdf_processor = PDFProcessor()
+        
+        # FIXED: Use Wells Fargo specific method instead of generic one
+        extracted_text, extraction_confidence, relevant_page, total_pages = pdf_processor.extract_wells_fargo_bank_statement(full_pdf_path)
+        
+        print(f"📊 Wells Fargo OCR Results: confidence={extraction_confidence:.2f}, relevant_page={relevant_page}, total_pages={total_pages}")
+        
+        if not extracted_text or extraction_confidence < 0.2:
+            return {
+                "success": False,
+                "message": "OCR extraction failed or very low confidence",
+                "confidence_score": extraction_confidence,
+                "total_pages": total_pages
+            }
+        
+        # Step 2: Parse Wells Fargo bank statement
+        parser = StatementParser()
+        statement_data = parser.parse_statement(extracted_text)
+        
+        print(f"🏦 Bank parsing results: institution={statement_data.institution}, confidence={statement_data.confidence_score:.2f}")
+        
+        if statement_data.institution != 'wells_fargo':
+            return {
+                "success": False,
+                "message": f"Detected institution '{statement_data.institution}' is not Wells Fargo. Only Wells Fargo bank statements are supported.",
+                "detected_institution": statement_data.institution
+            }
+        
+        if statement_data.confidence_score < 0.5:
+            return {
+                "success": False,
+                "message": "Could not reliably extract bank statement data",
+                "confidence_score": statement_data.confidence_score,
+                "extraction_notes": statement_data.extraction_notes
+            }
+        
+        # Step 3: Extract deposits and withdrawals from the text for bank balance model
+        deposits_amount = None
+        withdrawals_amount = None
+        
+        # Re-extract these specific values for BankBalance model
+        deposits_match = re.search(r'deposits/additions\s+\$?([\d,]+\.?\d*)', extracted_text, re.IGNORECASE)
+        if deposits_match:
+            deposits_amount = Decimal(deposits_match.group(1).replace(',', ''))
+        
+        withdrawals_match = re.search(r'withdrawals/subtractions\s*-?\s*\$?([\d,]+\.?\d*)', extracted_text, re.IGNORECASE)
+        if withdrawals_match:
+            withdrawals_amount = Decimal(withdrawals_match.group(1).replace(',', ''))
+        
+        # Step 4: Create BankBalance object
+        if not all([statement_data.beginning_balance, statement_data.ending_balance, statement_data.statement_period_end]):
+            return {
+                "success": False,
+                "message": "Missing required balance data (beginning balance, ending balance, or statement date)",
+                "extracted_data": {
+                    "beginning_balance": float(statement_data.beginning_balance) if statement_data.beginning_balance else None,
+                    "ending_balance": float(statement_data.ending_balance) if statement_data.ending_balance else None,
+                    "statement_date": statement_data.statement_period_end.isoformat() if statement_data.statement_period_end else None
+                }
+            }
+        
+        # Create statement month in YYYY-MM format
+        statement_month = statement_data.statement_period_end.strftime("%Y-%m")
+        
+        bank_balance = BankBalance(
+            account_name=bank_repo.get_or_create_account_name(statement_data.institution, statement_data.account_type),
+            account_number=statement_data.account_number,
+            statement_month=statement_month,
+            beginning_balance=statement_data.beginning_balance,
+            ending_balance=statement_data.ending_balance,
+            deposits_additions=deposits_amount,
+            withdrawals_subtractions=withdrawals_amount,
+            statement_date=statement_data.statement_period_end,
+            data_source="pdf_statement",  # Use string instead of enum
+            confidence_score=Decimal(str(statement_data.confidence_score)),
+            notes=f"Auto-extracted from {file.filename}"
+        )
+        
+        # Step 5: Check for duplicates
+        existing_balance = bank_repo.get_balance_by_month("Wells Fargo Checking", statement_month)
+        if existing_balance:
+            return {
+                "success": False,
+                "message": f"Bank balance for Wells Fargo Checking {statement_month} already exists",
+                "existing_balance": {
+                    "statement_month": existing_balance.statement_month,
+                    "ending_balance": float(existing_balance.ending_balance),
+                    "data_source": existing_balance.data_source
+                },
+                "extracted_balance": {
+                    "statement_month": statement_month,
+                    "ending_balance": float(statement_data.ending_balance),
+                    "data_source": "pdf_statement"
+                }
+            }
+        
+        # Step 6: Save bank balance
+        saved_balance = bank_repo.save(bank_balance)
+        
+        print(f"💾 Saved bank balance: {saved_balance.account_name} {saved_balance.statement_month}")
+        
+        # Step 7: Return success response
+        return {
+            "success": True,
+            "message": f"Successfully imported bank statement for {statement_month}",
+            "bank_balance": {
+                "id": saved_balance.id,
+                "account_name": saved_balance.account_name,
+                "account_number": saved_balance.account_number,
+                "statement_month": saved_balance.statement_month,
+                "beginning_balance": float(saved_balance.beginning_balance),
+                "ending_balance": float(saved_balance.ending_balance),
+                "deposits_additions": float(saved_balance.deposits_additions) if saved_balance.deposits_additions else None,
+                "withdrawals_subtractions": float(saved_balance.withdrawals_subtractions) if saved_balance.withdrawals_subtractions else None,
+                "statement_date": saved_balance.statement_date.isoformat(),
+                "confidence_score": float(saved_balance.confidence_score),
+                "data_source": saved_balance.data_source
+            },
+            "extraction_confidence": extraction_confidence,
+            "parsing_confidence": statement_data.confidence_score,
+            "extraction_notes": statement_data.extraction_notes
+        }
+        
+    except Exception as e:
+        print(f"❌ Error processing bank statement: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing bank statement: {str(e)}")
+
+@router.get("/bank-balances")
+async def get_bank_balances(
+    bank_repo: BankBalanceRepository = Depends(get_bank_balance_repository)
+):
+    """Get all bank balances for visualization"""
+    try:
+        balances = bank_repo.get_all_balances()
+        
+        return {
+            "success": True,
+            "balances": [
+                {
+                    "id": balance.id,
+                    "account_name": balance.account_name,
+                    "account_number": balance.account_number,
+                    "statement_month": balance.statement_month,
+                    "beginning_balance": float(balance.beginning_balance),
+                    "ending_balance": float(balance.ending_balance),
+                    "deposits_additions": float(balance.deposits_additions) if balance.deposits_additions else None,
+                    "withdrawals_subtractions": float(balance.withdrawals_subtractions) if balance.withdrawals_subtractions else None,
+                    "statement_date": balance.statement_date.isoformat(),
+                    "data_source": balance.data_source,
+                    "confidence_score": float(balance.confidence_score),
+                    "created_at": balance.created_at.isoformat() if balance.created_at else None
+                }
+                for balance in balances
+            ],
+            "total_records": len(balances)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching bank balances: {str(e)}")
 
 @router.post("/statements/upload", response_model=StatementUploadResponse)
 async def upload_statement_with_page_detection(

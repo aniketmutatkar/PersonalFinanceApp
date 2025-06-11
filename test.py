@@ -1,239 +1,275 @@
-#!/usr/bin/env python3
-"""
-Portfolio API Debug Script
-Run with: python3 test.py
+# test_wells_fargo_fixed.py
 
-This script investigates why the Portfolio Trends API is broken
-and shows old 2023 data instead of current 2024/2025 data.
+"""
+Comprehensive test script for Wells Fargo OCR implementation
+Tests both page detection and pattern matching
 """
 
-import sqlite3
-import requests
-import json
-from datetime import datetime, date
+import os
+import sys
+import logging
+from datetime import datetime
 from decimal import Decimal
 
-def format_currency(amount):
-    """Format amount as currency"""
-    if amount is None:
-        return "$0"
-    return f"${float(amount):,.2f}"
+# Setup logging to see debug output
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
-def check_database():
-    """Check what's actually in the database"""
-    print("🔍 DATABASE INVESTIGATION")
-    print("=" * 40)
+# Add your src directory to the path (adjust if needed)
+sys.path.append('src')
+
+from services.pdf_processor import PDFProcessor
+from services.statement_parser import StatementParser
+
+def test_wells_fargo_ocr(pdf_path: str):
+    """
+    Test the complete Wells Fargo OCR pipeline
+    """
+    print("=" * 80)
+    print("🏦 WELLS FARGO OCR TEST - COMPREHENSIVE VALIDATION")
+    print("=" * 80)
+    
+    if not os.path.exists(pdf_path):
+        print(f"❌ ERROR: PDF file not found: {pdf_path}")
+        return False
+    
+    # File info
+    file_size_mb = os.path.getsize(pdf_path) / (1024 * 1024)
+    print(f"📄 PDF File: {os.path.basename(pdf_path)} ({file_size_mb:.2f} MB)")
     
     try:
-        # Connect to your database
-        conn = sqlite3.connect('finance.db')  # Adjust path if needed
-        cursor = conn.cursor()
+        # Step 1: PDF Processing with enhanced page detection
+        print("\n🔍 STEP 1: PDF PROCESSING & PAGE DETECTION")
+        print("-" * 50)
         
-        # 1. Check portfolio accounts
-        print("\n1️⃣ PORTFOLIO ACCOUNTS:")
-        cursor.execute("""
-            SELECT id, account_name, institution, account_type, is_active 
-            FROM portfolio_accounts 
-            ORDER BY id
-        """)
-        accounts = cursor.fetchall()
+        pdf_processor = PDFProcessor()
         
-        for account in accounts:
-            print(f"  ID: {account[0]} | {account[1]} ({account[2]}) - {account[3]} - Active: {account[4]}")
+        # Test the Wells Fargo specific method
+        extracted_text, extraction_confidence, relevant_page, total_pages = pdf_processor.extract_wells_fargo_bank_statement(pdf_path)
         
-        # 2. Check portfolio balances - recent data
-        print("\n2️⃣ RECENT PORTFOLIO BALANCES (Last 20):")
-        cursor.execute("""
-            SELECT pb.account_id, pa.account_name, pb.balance_date, pb.balance_amount, pb.data_source
-            FROM portfolio_balances pb
-            JOIN portfolio_accounts pa ON pb.account_id = pa.id
-            WHERE pb.balance_date >= '2024-01-01'
-            ORDER BY pb.balance_date DESC, pb.account_id
-            LIMIT 20
-        """)
-        recent_balances = cursor.fetchall()
+        print(f"📊 OCR Results:")
+        print(f"   • Total Pages: {total_pages}")
+        print(f"   • Selected Page: {relevant_page}")
+        print(f"   • Extraction Confidence: {extraction_confidence:.2%}")
+        print(f"   • Text Length: {len(extracted_text):,} characters")
         
-        if recent_balances:
-            print("  Recent balance data found:")
-            for balance in recent_balances:
-                print(f"    {balance[1]}: {balance[2]} = {format_currency(balance[3])} ({balance[4]})")
-        else:
-            print("  ❌ NO RECENT BALANCE DATA FOUND!")
+        if extraction_confidence < 0.3:
+            print(f"⚠️  WARNING: Low extraction confidence ({extraction_confidence:.1%})")
         
-        # 3. Check balance data by month for 2024/2025
-        print("\n3️⃣ MONTHLY BALANCE SUMMARY (2024-2025):")
-        cursor.execute("""
-            SELECT 
-                strftime('%Y-%m', pb.balance_date) as month,
-                COUNT(*) as balance_count,
-                SUM(pb.balance_amount) as total_value,
-                GROUP_CONCAT(pa.account_name || ':' || pb.balance_amount) as account_breakdown
-            FROM portfolio_balances pb
-            JOIN portfolio_accounts pa ON pb.account_id = pa.id
-            WHERE pb.balance_date >= '2024-01-01'
-            GROUP BY strftime('%Y-%m', pb.balance_date)
-            ORDER BY month DESC
-        """)
-        monthly_data = cursor.fetchall()
+        # Show a sample of extracted text
+        print(f"\n📝 Text Sample (first 300 chars):")
+        print("-" * 30)
+        print(f"'{extracted_text[:300]}...'")
         
-        if monthly_data:
-            print("  Monthly portfolio values:")
-            for month_data in monthly_data:
-                print(f"    {month_data[0]}: {format_currency(month_data[2])} ({month_data[1]} balances)")
-        else:
-            print("  ❌ NO MONTHLY DATA FOR 2024-2025!")
+        # Step 2: Statement Parsing
+        print("\n🔍 STEP 2: STATEMENT PARSING")
+        print("-" * 50)
         
-        # 4. Check what date ranges exist
-        print("\n4️⃣ DATE RANGE ANALYSIS:")
-        cursor.execute("""
-            SELECT 
-                MIN(balance_date) as earliest,
-                MAX(balance_date) as latest,
-                COUNT(*) as total_balances,
-                COUNT(DISTINCT account_id) as accounts_with_data
-            FROM portfolio_balances
-        """)
-        date_range = cursor.fetchone()
+        parser = StatementParser()
+        statement_data = parser.parse_statement(extracted_text)
         
-        print(f"  Date range: {date_range[0]} to {date_range[1]}")
-        print(f"  Total balances: {date_range[2]}")
-        print(f"  Accounts with data: {date_range[3]}")
+        # Detailed results
+        print(f"🏦 Institution Detection:")
+        print(f"   • Detected: {statement_data.institution}")
+        print(f"   • Confidence: {statement_data.confidence_score:.2%}")
         
-        # 5. Check for gaps in recent data
-        print("\n5️⃣ DATA GAPS CHECK:")
-        cursor.execute("""
-            SELECT account_id, account_name, MAX(balance_date) as last_balance
-            FROM portfolio_balances pb
-            JOIN portfolio_accounts pa ON pb.account_id = pa.id
-            WHERE pa.is_active = 1
-            GROUP BY account_id, account_name
-            ORDER BY last_balance DESC
-        """)
-        last_balances = cursor.fetchall()
+        print(f"\n💰 Balance Extraction:")
+        success_count = 0
+        total_extractions = 6
         
-        current_date = date.today()
-        for account_data in last_balances:
-            last_date = datetime.strptime(account_data[2], '%Y-%m-%d').date()
-            days_old = (current_date - last_date).days
-            status = "✅ Recent" if days_old < 60 else f"⚠️ {days_old} days old"
-            print(f"    {account_data[1]}: Last balance {account_data[2]} ({status})")
+        # Check each extraction
+        extractions = [
+            ("Beginning Balance", statement_data.beginning_balance),
+            ("Ending Balance", statement_data.ending_balance),
+            ("Account Number", statement_data.account_number),
+            ("Account Type", statement_data.account_type),
+            ("Statement Start", statement_data.statement_period_start),
+            ("Statement End", statement_data.statement_period_end),
+        ]
         
-        conn.close()
-        
-    except sqlite3.Error as e:
-        print(f"❌ Database error: {e}")
-    except FileNotFoundError:
-        print("❌ Database file not found. Check the path: finance_tracker.db")
-
-def check_api_endpoints():
-    """Check what the APIs are actually returning"""
-    print("\n🌐 API ENDPOINT INVESTIGATION")
-    print("=" * 40)
-    
-    base_url = "http://localhost:8000/api"
-    
-    # 1. Portfolio Trends API - different periods
-    print("\n1️⃣ PORTFOLIO TRENDS API:")
-    periods = ['1y', '2y', '5y', 'all']
-    
-    for period in periods:
-        try:
-            response = requests.get(f"{base_url}/portfolio/trends?period={period}")
-            if response.status_code == 200:
-                data = response.json()
-                monthly_values = data.get('monthly_values', [])
-                print(f"\n  Period {period}:")
-                print(f"    Found {len(monthly_values)} monthly values")
-                
-                if monthly_values:
-                    # Show first and last few values
-                    print(f"    Latest 3:")
-                    for i, month in enumerate(monthly_values[:3]):
-                        print(f"      {i}: {month.get('month_display')} = {format_currency(month.get('total_value'))}")
-                    
-                    if len(monthly_values) > 3:
-                        print(f"    Oldest 3:")
-                        for i, month in enumerate(monthly_values[-3:]):
-                            idx = len(monthly_values) - 3 + i
-                            print(f"      {idx}: {month.get('month_display')} = {format_currency(month.get('total_value'))}")
-                else:
-                    print("    ❌ No monthly values returned")
+        for name, value in extractions:
+            if value:
+                print(f"   ✅ {name}: {value}")
+                success_count += 1
             else:
-                print(f"  ❌ API error for period {period}: {response.status_code}")
-        except Exception as e:
-            print(f"  ❌ Request failed for period {period}: {e}")
-    
-    # 2. Portfolio Overview API
-    print("\n2️⃣ PORTFOLIO OVERVIEW API:")
-    try:
-        response = requests.get(f"{base_url}/portfolio/overview")
-        if response.status_code == 200:
-            data = response.json()
-            print(f"    Total Portfolio Value: {format_currency(data.get('total_portfolio_value'))}")
-            print(f"    Total Deposits: {format_currency(data.get('total_deposits'))}")
-            print(f"    Total Growth: {format_currency(data.get('total_growth'))}")
-            print(f"    As of Date: {data.get('as_of_date')}")
+                print(f"   ❌ {name}: NOT FOUND")
+        
+        # Overall success rate
+        success_rate = (success_count / total_extractions) * 100
+        print(f"\n📊 Extraction Success Rate: {success_rate:.1f}% ({success_count}/{total_extractions})")
+        
+        # Step 3: Detailed Analysis
+        print(f"\n🔍 STEP 3: DETAILED ANALYSIS")
+        print("-" * 50)
+        
+        print(f"🗒️  Extraction Notes ({len(statement_data.extraction_notes)} items):")
+        for i, note in enumerate(statement_data.extraction_notes, 1):
+            print(f"   {i}. {note}")
+        
+        # Step 4: Validation & Recommendations
+        print(f"\n🎯 STEP 4: VALIDATION & RECOMMENDATIONS")
+        print("-" * 50)
+        
+        # Critical validations
+        critical_missing = []
+        if not statement_data.ending_balance:
+            critical_missing.append("Ending Balance")
+        if not statement_data.statement_period_end:
+            critical_missing.append("Statement Date")
+        if not statement_data.institution or statement_data.institution == 'unknown':
+            critical_missing.append("Institution Detection")
+        
+        if critical_missing:
+            print(f"🚨 CRITICAL ISSUES:")
+            for issue in critical_missing:
+                print(f"   • Missing: {issue}")
         else:
-            print(f"  ❌ API error: {response.status_code}")
-    except Exception as e:
-        print(f"  ❌ Request failed: {e}")
-    
-    # 3. Financial Overview API
-    print("\n3️⃣ FINANCIAL OVERVIEW API:")
-    try:
-        response = requests.get(f"{base_url}/statistics/overview")
-        if response.status_code == 200:
-            data = response.json()
-            net_worth = data.get('financial_health', {}).get('net_worth', {})
-            print(f"    Total Net Worth: {format_currency(net_worth.get('total_net_worth'))}")
-            print(f"    Liquid Assets: {format_currency(net_worth.get('liquid_assets'))}")
-            print(f"    Investment Assets: {format_currency(net_worth.get('investment_assets'))}")
+            print(f"✅ All critical data extracted successfully!")
+        
+        # Pattern matching analysis
+        print(f"\n🔍 Pattern Matching Analysis:")
+        wells_fargo_indicators = [
+            'wells fargo combined statement',
+            'statement period activity summary',
+            'beginning balance on',
+            'ending balance on',
+            'deposits/additions',
+            'withdrawals/subtractions'
+        ]
+        
+        found_indicators = []
+        text_lower = extracted_text.lower()
+        for indicator in wells_fargo_indicators:
+            if indicator in text_lower:
+                found_indicators.append(indicator)
+        
+        print(f"   • Wells Fargo Indicators Found: {len(found_indicators)}/{len(wells_fargo_indicators)}")
+        for indicator in found_indicators:
+            print(f"     ✅ '{indicator}'")
+        
+        # Page type analysis
+        transaction_indicators = ['transaction history', 'check deposits', 'check number']
+        summary_indicators = ['activity summary', 'beginning balance', 'ending balance']
+        
+        transaction_count = sum(1 for ind in transaction_indicators if ind in text_lower)
+        summary_count = sum(1 for ind in summary_indicators if ind in text_lower)
+        
+        print(f"\n📄 Page Type Analysis:")
+        print(f"   • Summary Page Indicators: {summary_count}")
+        print(f"   • Transaction Page Indicators: {transaction_count}")
+        
+        if summary_count > transaction_count:
+            print(f"   ✅ Correctly detected SUMMARY page")
         else:
-            print(f"  ❌ API error: {response.status_code}")
+            print(f"   ⚠️  May have detected TRANSACTION page instead of summary")
+        
+        # Final verdict
+        print(f"\n🏁 FINAL VERDICT")
+        print("-" * 50)
+        
+        if success_rate >= 80:
+            verdict = "🎉 EXCELLENT"
+            color = "GREEN"
+        elif success_rate >= 60:
+            verdict = "👍 GOOD"
+            color = "YELLOW"
+        else:
+            verdict = "❌ NEEDS WORK"
+            color = "RED"
+        
+        print(f"Overall Result: {verdict}")
+        print(f"Success Rate: {success_rate:.1f}%")
+        print(f"Confidence: {statement_data.confidence_score:.2%}")
+        
+        # Recommendations
+        if success_rate < 80:
+            print(f"\n💡 RECOMMENDATIONS:")
+            if not statement_data.ending_balance:
+                print(f"   • Add more balance extraction patterns")
+            if not statement_data.account_number:
+                print(f"   • Improve account number detection")
+            if summary_count <= transaction_count:
+                print(f"   • Enhance page detection to prioritize summary pages")
+        
+        return success_rate >= 60  # Consider 60%+ a passing grade
+        
     except Exception as e:
-        print(f"  ❌ Request failed: {e}")
+        print(f"❌ ERROR during processing: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
 
-def analyze_data():
-    """Analyze and provide recommendations"""
-    print("\n🔧 ANALYSIS & RECOMMENDATIONS")
-    print("=" * 40)
+def test_specific_patterns(pdf_path: str):
+    """
+    Test specific regex patterns on the extracted text
+    """
+    print("\n" + "=" * 80)
+    print("🧪 PATTERN TESTING - REGEX VALIDATION")
+    print("=" * 80)
     
-    print("\n💡 LIKELY ISSUES WITH PORTFOLIO TRENDS API:")
-    print("  1. Date filtering logic is wrong in get_portfolio_trends()")
-    print("  2. Account balance queries are not finding recent data")
-    print("  3. Monthly value aggregation is using old data")
-    print("  4. Period calculation (1y, 2y) might be off")
-    
-    print("\n🎯 NEXT STEPS:")
-    print("  1. Check if you have recent balance data (above)")
-    print("  2. Verify the Portfolio Service date logic")
-    print("  3. Fix the portfolio trends API to use latest data")
-    print("  4. Use Portfolio Overview API as temporary workaround")
-    
-    print("\n✅ CONFIRMED WORKING APIS:")
-    print("  • Portfolio Overview API: Shows current $112,809")
-    print("  • Financial Overview API: Shows correct net worth $131,328")
-    print("  • Problem: Portfolio Trends API stuck on 2023 data")
-
-def main():
-    """Main function"""
-    print("🔍 PORTFOLIO API DEBUG INVESTIGATION")
-    print("=" * 50)
-    print(f"Running at: {datetime.now()}")
-    print()
-    
-    # Check database first
-    check_database()
-    
-    # Check API endpoints
-    check_api_endpoints()
-    
-    # Provide analysis
-    analyze_data()
-    
-    print("\n" + "=" * 50)
-    print("🏁 INVESTIGATION COMPLETE")
-    print("Check the output above to identify the portfolio trends issue!")
+    try:
+        # Extract text first
+        pdf_processor = PDFProcessor()
+        text, _, _, _ = pdf_processor.extract_wells_fargo_bank_statement(pdf_path)
+        
+        import re
+        
+        # Test individual patterns
+        test_patterns = [
+            ("Institution Detection", r'wells fargo combined statement', True),
+            ("Account Number", r'(\d{8,12})', False),
+            ("Beginning Balance", r'beginning balance on\s+\d{1,2}/\d{1,2}\s*\$?([\d,]+\.?\d*)', False),
+            ("Ending Balance", r'ending balance on\s+\d{1,2}/\d{1,2}\s*\$?([\d,]+\.?\d*)', False),
+            ("Statement Date", r'([A-Za-z]+\s+\d{1,2},\s*\d{4})\s+page\s+\d+\s+of\s+\d+', False),
+            ("Deposits", r'deposits/additions\s+\$?([\d,]+\.?\d*)', False),
+            ("Withdrawals", r'withdrawals/subtractions\s*-?\s*\$?([\d,]+\.?\d*)', False),
+            ("Transaction Totals", r'totals\s+\$?([\d,]+\.?\d*)\s+\$?([\d,]+\.?\d*)', False),
+        ]
+        
+        print(f"Testing {len(test_patterns)} patterns on extracted text...")
+        
+        for pattern_name, pattern, case_sensitive in test_patterns:
+            flags = 0 if case_sensitive else re.IGNORECASE
+            matches = re.findall(pattern, text, flags)
+            
+            if matches:
+                print(f"✅ {pattern_name}: {len(matches)} match(es)")
+                for i, match in enumerate(matches[:3]):  # Show first 3 matches
+                    print(f"    {i+1}. {match}")
+                if len(matches) > 3:
+                    print(f"    ... and {len(matches) - 3} more")
+            else:
+                print(f"❌ {pattern_name}: No matches")
+        
+    except Exception as e:
+        print(f"❌ Error in pattern testing: {e}")
 
 if __name__ == "__main__":
-    main()
+    # Replace with your actual PDF path
+    PDF_PATH = r"old_data/Wells Fargo Bank Statement.pdf"  # Update this path
+    
+    # You can also pass the path as a command line argument
+    if len(sys.argv) > 1:
+        PDF_PATH = sys.argv[1]
+    
+    print(f"Testing with PDF: {PDF_PATH}")
+    
+    # Run comprehensive test
+    success = test_wells_fargo_ocr(PDF_PATH)
+    
+    # Run pattern tests
+    test_specific_patterns(PDF_PATH)
+    
+    # Final summary
+    print("\n" + "=" * 80)
+    print("🏁 TEST COMPLETE")
+    print("=" * 80)
+    
+    if success:
+        print("🎉 OVERALL: PASSING - OCR implementation working!")
+    else:
+        print("❌ OVERALL: FAILING - Needs debugging")
+    
+    print("\nNext steps:")
+    print("1. Fix any failing patterns shown above")
+    print("2. Test with different Wells Fargo statement formats")
+    print("3. Add more specific patterns if needed")

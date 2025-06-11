@@ -7,6 +7,10 @@ interface FileUploadZoneProps {
   isLoading?: boolean;
   error?: string | null;
   className?: string;
+  acceptedFileTypes?: string;
+  title?: string;
+  subtitle?: string;
+  supportText?: string;
 }
 
 interface FileWithId extends File {
@@ -17,7 +21,11 @@ export default function FileUploadZone({
   onFilesSelected, 
   isLoading = false, 
   error = null,
-  className = '' 
+  className = '',
+  acceptedFileTypes = '.csv',
+  title = 'Upload Bank CSV Files',
+  subtitle = 'Drag and drop your bank CSV files here, or click to browse',
+  supportText = 'Supports multiple files • Max 5MB per file • CSV format only'
 }: FileUploadZoneProps) {
   const [selectedFiles, setSelectedFiles] = useState<FileWithId[]>([]);
   const [originalFiles, setOriginalFiles] = useState<File[]>([]); // Store original File objects
@@ -144,7 +152,7 @@ export default function FileUploadZone({
           id="file-input"
           type="file"
           multiple
-          accept=".csv"
+          accept={acceptedFileTypes}
           onChange={handleInputChange}
           className="hidden"
           disabled={isLoading}
@@ -155,13 +163,13 @@ export default function FileUploadZone({
           
           <div>
             <h3 className="text-lg font-semibold text-white mb-2">
-              {dragActive ? 'Drop your CSV files here' : 'Upload Bank CSV Files'}
+              {dragActive ? 'Drop files here' : title}
             </h3>
-            <p className="text-gray-400 text-sm">
-              Drag and drop your bank CSV files here, or click to browse
+            <p className="text-gray-400 mb-4">
+              {subtitle}
             </p>
-            <p className="text-gray-500 text-xs mt-2">
-              Supports multiple files • Max 5MB per file • CSV format only
+            <p className="text-xs text-gray-500">
+              {supportText}
             </p>
           </div>
         </div>

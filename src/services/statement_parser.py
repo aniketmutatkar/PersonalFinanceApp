@@ -9,7 +9,7 @@ import re
 import logging
 from typing import Dict, List, Optional, Tuple
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,7 @@ class StatementParser:
     def __init__(self):
         """Initialize parser with institution-specific extraction methods"""
         self.institution_extractors = {
+            'wells_fargo': self._extract_wells_fargo_bank,
             'adp': self._extract_adp_401k,
             'acorns': self._extract_acorns,
             'robinhood': self._extract_robinhood,
@@ -97,11 +98,19 @@ class StatementParser:
         return cleaned.strip()
     
     def _detect_institution(self, text: str) -> str:
-        """Enhanced institution detection with priority order"""
+        """Enhanced institution detection with Wells Fargo bank statements"""
         text_lower = text.lower()
         
         # Institution detection with VERY specific keywords to avoid conflicts
         institution_checks = [
+            ('wells_fargo', [
+                'wells fargo combined statement of accounts',
+                'wells fargo everyday checking',
+                'wells fargo platinum savings',
+                'wells fargo bank, n.a.',
+                'wellsfargo.com',
+                'statement period activity summary'
+            ]),
             ('wealthfront', [
                 'wealthfront brokerage llc', 'wealthfront advisers', 
                 'monthly statement for march', 'individual investment account',
@@ -142,6 +151,232 @@ class StatementParser:
         
         logger.warning("Could not detect institution from statement text")
         return 'unknown'
+
+    def _extract_wells_fargo_bank(self, text: str) -> StatementData:
+        """Extract data from Wells Fargo bank statements - FIXED VERSION"""
+        data = StatementData()
+        data.account_type = "checking"  # Focus on primary checking account
+        
+        logger.info("Extracting Wells Fargo bank statement data")
+        
+        # Account detection - look for account numbers in summary format
+        account_patterns = [
+            r'wells fargo everyday checking.*?(\d{8,12})',  # Also make this generic
+            r'account number:\s*(\d{8,12})\s*\(primary account\)',  
+            r'(\d{8,12})\s+[\d,]+\.?\d*\s+[\d,]+\.?\d*',  
+            r'everyday checking\s+\d+\s+(\d{8,12})',  
+        ]
+        
+        for pattern in account_patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                data.account_number = match.group(1)
+                data.extraction_notes.append(f"Found account number: {match.group(1)}")
+                logger.info(f"Found account number: {match.group(1)}")
+                break
+        
+        # Statement period detection - Enhanced to catch various formats
+        period_patterns = [
+            r'([A-Za-z]+\s+\d{1,2},\s*\d{4})\s+page\s+\d+\s+of\s+\d+',  # "May 31, 2025 Page 1 of 7"
+            r'statement period activity summary.*?ending balance on\s+(\d{1,2}/\d{1,2})',  # Extract end date
+            r'beginning balance on\s+(\d{1,2}/\d{1,2}).*?ending balance on\s+(\d{1,2}/\d{1,2})',  # Date range
+            r'as of\s+([A-Za-z]+\s+\d{1,2},\s*\d{4})',  # "as of May 31, 2025"
+        ]
+        
+        for pattern in period_patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                try:
+                    if 'page' in pattern.lower():
+                        # "May 31, 2025" format
+                        date_str = match.group(1)
+                        parsed_date = self._parse_date(date_str)
+                        if parsed_date:
+                            data.statement_period_end = parsed_date
+                            data.extraction_notes.append(f"Found statement date: {date_str}")
+                            logger.info(f"Parsed statement date: {parsed_date}")
+                            break
+                    else:
+                        # Handle date range patterns
+                        if len(match.groups()) > 1:
+                            end_date_str = match.group(2)
+                        else:
+                            end_date_str = match.group(1)
+                        
+                        # For patterns like "5/31", add current year
+                        if '/' in end_date_str and len(end_date_str.split('/')) == 2:
+                            # Extract year from document header
+                            year_match = re.search(r'(\d{4})', text)
+                            if year_match:
+                                year = year_match.group(1)
+                                full_date_str = f"{end_date_str}/{year}"
+                                parsed_date = datetime.strptime(full_date_str, "%m/%d/%Y").date()
+                                data.statement_period_end = parsed_date
+                                data.extraction_notes.append(f"Found statement end date: {full_date_str}")
+                                logger.info(f"Parsed end date: {parsed_date}")
+                                break
+                except Exception as e:
+                    logger.warning(f"Failed to parse Wells Fargo date: {e}")
+                    continue
+        
+        # Enhanced balance extraction - target the summary section specifically
+        beginning_patterns = [
+            # From summary section
+            r'beginning balance on\s+\d{1,2}/\d{1,2}\s*\$?([\d,]+\.?\d*)',
+            r'statement period activity summary.*?beginning balance.*?\$?([\d,]+\.?\d*)',
+            # From table format
+            r'ending balance\s+last statement\s+ending balance\s+this statement.*?[\d,]+\.?\d*\s+([\d,]+\.?\d*)',
+            # Alternative patterns
+            r'balance on\s+\d{1,2}/\d{1,2}\s*\$?([\d,]+\.?\d*)',
+        ]
+        
+        for pattern in beginning_patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                try:
+                    amount_str = match.group(1).replace(',', '')
+                    data.beginning_balance = Decimal(amount_str)
+                    data.extraction_notes.append(f"Found beginning balance: ${amount_str}")
+                    logger.info(f"Parsed beginning balance: ${amount_str}")
+                    break
+                except (ValueError, InvalidOperation) as e:
+                    logger.warning(f"Failed to parse beginning balance '{match.group(1)}': {e}")
+        
+        # Enhanced ending balance patterns
+        ending_patterns = [
+            # From summary section  
+            r'ending balance on\s+\d{1,2}/\d{1,2}\s*\$?([\d,]+\.?\d*)',
+            r'statement period activity summary.*?ending balance.*?\$?([\d,]+\.?\d*)',
+            # From account summary table - look for current balance
+            r'ending balance\s+this statement\s+([\d,]+\.?\d*)',
+            r'total deposit accounts.*?\$?([\d,]+\.?\d*)',
+            # More specific patterns
+            r'(\d{10})\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)',  # Account number followed by old and new balance
+        ]
+        
+        for pattern in ending_patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                try:
+                    # Handle patterns with multiple groups
+                    if len(match.groups()) > 1:
+                        amount_str = match.group(2).replace(',', '')  # Take the second group (current balance)
+                    else:
+                        amount_str = match.group(1).replace(',', '')
+                    
+                    data.ending_balance = Decimal(amount_str)
+                    data.extraction_notes.append(f"Found ending balance: ${amount_str}")
+                    logger.info(f"Parsed ending balance: ${amount_str}")
+                    break
+                except (ValueError, InvalidOperation) as e:
+                    logger.warning(f"Failed to parse ending balance '{match.group(1)}': {e}")
+        
+        # Enhanced deposits/withdrawals patterns
+        deposits_patterns = [
+            r'deposits/additions\s+\$?([\d,]+\.?\d*)',
+            r'statement period activity summary.*?deposits.*?\$?([\d,]+\.?\d*)',
+            r'deposits\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)',  # In case there are multiple columns
+            # Look in the totals section at bottom of transaction page
+            r'totals\s+\$?([\d,]+\.?\d*)\s+\$?[\d,]+\.?\d*',
+        ]
+        
+        for pattern in deposits_patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                try:
+                    amount_str = match.group(1).replace(',', '')
+                    data.extraction_notes.append(f"Found deposits/additions: ${amount_str}")
+                    logger.info(f"Parsed deposits: ${amount_str}")
+                    # Store this for later use in bank balance creation
+                    break
+                except (ValueError, InvalidOperation) as e:
+                    logger.warning(f"Failed to parse deposits '{match.group(1)}': {e}")
+        
+        withdrawals_patterns = [
+            r'withdrawals/subtractions\s*-?\s*\$?([\d,]+\.?\d*)',
+            r'statement period activity summary.*?withdrawals.*?-?\s*\$?([\d,]+\.?\d*)',
+            r'withdrawals\s+[\d,]+\.?\d*\s+([\d,]+\.?\d*)',
+            # From totals section
+            r'totals\s+\$?[\d,]+\.?\d*\s+\$?([\d,]+\.?\d*)',
+        ]
+        
+        for pattern in withdrawals_patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                try:
+                    amount_str = match.group(1).replace(',', '')
+                    data.extraction_notes.append(f"Found withdrawals/subtractions: ${amount_str}")
+                    logger.info(f"Parsed withdrawals: ${amount_str}")
+                    # Store this for later use in bank balance creation
+                    break
+                except (ValueError, InvalidOperation) as e:
+                    logger.warning(f"Failed to parse withdrawals '{match.group(1)}': {e}")
+        
+        # Enhanced account number detection from various locations
+        if not data.account_number:
+            # Try alternative account number patterns
+            alt_account_patterns = [
+                r'(\d{10})',  # Any 10-digit number (but verify it's account related)
+                r'account.*?(\d{10})',
+                r'primary account.*?(\d{10})',
+            ]
+            
+            for pattern in alt_account_patterns:
+                matches = re.findall(pattern, text, re.IGNORECASE)
+                if matches:
+                    # Take the most likely account number (first occurrence near "account" text)
+                    for potential_account in matches:
+                        # Simple validation - account numbers often start with 3 for Wells Fargo checking
+                        if potential_account.startswith('3') and len(potential_account) == 10:
+                            data.account_number = potential_account
+                            data.extraction_notes.append(f"Found alternative account number: {potential_account}")
+                            break
+                    if data.account_number:
+                        break
+
+        if not data.ending_balance or not data.beginning_balance:
+            logger.info("Summary patterns failed, trying transaction page fallback extraction")
+            
+            # Extract from "Totals $8,747.54 $5,794.14" format
+            totals_pattern = r'totals\s+\$?([\d,]+\.?\d*)\s+\$?([\d,]+\.?\d*)'
+            totals_match = re.search(totals_pattern, text, re.IGNORECASE)
+            
+            if totals_match:
+                try:
+                    deposits_str = totals_match.group(1).replace(',', '')
+                    withdrawals_str = totals_match.group(2).replace(',', '')
+                    
+                    deposits_amount = Decimal(deposits_str)
+                    withdrawals_amount = Decimal(withdrawals_str)
+                    
+                    data.extraction_notes.append(f"Found transaction totals: deposits=${deposits_str}, withdrawals=${withdrawals_str}")
+                    
+                    # If we have a beginning balance from elsewhere, calculate ending
+                    if data.beginning_balance and not data.ending_balance:
+                        calculated_ending = data.beginning_balance + deposits_amount - withdrawals_amount
+                        data.ending_balance = calculated_ending
+                        data.extraction_notes.append(f"Calculated ending balance from transactions: ${calculated_ending}")
+                    
+                except (ValueError, InvalidOperation) as e:
+                    logger.warning(f"Failed to parse transaction totals: {e}")
+            
+            # Alternative: Look for any large dollar amounts as potential balances
+            if not data.ending_balance:
+                all_amounts = re.findall(r'\$?([\d,]{4,}\.?\d{0,2})', text)
+                for amount_str in all_amounts:
+                    try:
+                        clean_amount = amount_str.replace(',', '')
+                        amount = Decimal(clean_amount)
+                        # Assume amounts > $1000 could be account balances
+                        if 1000 <= amount <= 1000000:  # Reasonable account balance range
+                            data.ending_balance = amount
+                            data.extraction_notes.append(f"Found potential balance from transaction page: ${clean_amount}")
+                            break
+                    except (ValueError, InvalidOperation):
+                        continue
+        
+        logger.info(f"Wells Fargo extraction complete. Found {len(data.extraction_notes)} data points")
+        return data
 
     def _extract_adp_401k(self, text: str) -> StatementData:
         """Extract data from ADP 401k statements with precise patterns"""
@@ -683,22 +918,24 @@ class StatementParser:
         return cleaned
 
     def _parse_date(self, date_str: str) -> Optional[date]:
-        """Enhanced date parsing for various formats"""
+        """Parse various date formats found in statements"""
         if not date_str:
             return None
-            
-        # Clean the string
+        
+        # Clean the date string
         date_str = date_str.strip()
         
-        # Common date formats to try
-        formats = [
-            '%B %d, %Y',      # "March 31, 2025"
-            '%b %d, %Y',      # "Mar 31, 2025"
-            '%m/%d/%Y',       # "03/31/2025"
-            '%Y-%m-%d',       # "2025-03-31"
+        # Try different date formats
+        date_formats = [
+            "%B %d, %Y",      # "May 31, 2025"
+            "%b %d, %Y",      # "May 31, 2025" 
+            "%m/%d/%Y",       # "5/31/2025"
+            "%Y-%m-%d",       # "2025-05-31"
+            "%B %d %Y",       # "May 31 2025"
+            "%b %d %Y",       # "May 31 2025"
         ]
         
-        for fmt in formats:
+        for fmt in date_formats:
             try:
                 return datetime.strptime(date_str, fmt).date()
             except ValueError:

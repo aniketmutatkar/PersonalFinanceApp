@@ -11,6 +11,7 @@ import logging
 from typing import Tuple, Optional, Dict
 from decimal import Decimal
 from datetime import date
+import re
 
 try:
     import PyPDF2
@@ -58,7 +59,43 @@ class PDFProcessor:
             r'\d{4}-\d{2}-\d{2}',
             r'[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}'
         ]
-    
+
+    def extract_wells_fargo_bank_statement(self, pdf_path: str) -> Tuple[str, float, int, int]:
+        """
+        Simple Wells Fargo fix - just force Page 2
+        """
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                total_pages = len(pdf.pages)
+                
+                # Your debug showed Page 2 has everything. Just use it.
+                if total_pages >= 2:
+                    page_2_text = pdf.pages[1].extract_text() or ""  # Page 2 = index 1
+                    
+                    # Validate it's the right page
+                    if ('statement period activity summary' in page_2_text.lower() and 
+                        'beginning balance on' in page_2_text.lower()):
+                        
+                        print(f"🎯 Using Page 2 (Wells Fargo summary page)")
+                        
+                        # Use the existing confidence calculation
+                        confidence = self.calculate_confidence(page_2_text, "pdfplumber")
+                        
+                        return page_2_text, confidence, 2, total_pages
+                
+                # Fallback - use the original method
+                print("⚠️ Page 2 validation failed, using original method")
+                return self.extract_with_page_detection(pdf_path)
+                
+        except Exception as e:
+            print(f"❌ Wells Fargo method failed: {e}")
+            # Fallback to original method
+            return self.extract_with_page_detection(pdf_path)
+
+    def calculate_confidence(self, text: str, method: str) -> float:
+        """Wrapper for the existing method"""
+        return self._calculate_text_confidence(text, method)
+
     def extract_with_page_detection(self, pdf_file_path: str) -> Tuple[str, float, int, int]:
         """
         Extract text with page detection to find most relevant financial data
@@ -235,13 +272,7 @@ class PDFProcessor:
     
     def _score_page_for_financial_content(self, text: str) -> float:
         """
-        Score a page based on financial content relevance
-        
-        Args:
-            text: Extracted page text
-            
-        Returns:
-            Score between 0.0 and 1.0 (higher = more financial content)
+        Enhanced scoring prioritizing summary pages over transaction pages
         """
         if not text:
             return 0.0
@@ -249,42 +280,52 @@ class PDFProcessor:
         text_lower = text.lower()
         score_factors = []
         
-        # 1. Financial keyword density
-        keyword_count = sum(1 for keyword in self.financial_keywords if keyword in text_lower)
-        keyword_density = min(keyword_count / len(self.financial_keywords), 1.0)
-        score_factors.append(keyword_density)
+        # 1. Wells Fargo summary page indicators (HIGHEST PRIORITY)
+        wells_fargo_summary_keywords = [
+            'statement period activity summary',
+            'beginning balance on',
+            'ending balance on', 
+            'deposits/additions',
+            'withdrawals/subtractions'
+        ]
+        summary_count = sum(1 for keyword in wells_fargo_summary_keywords if keyword in text_lower)
+        summary_score = min(summary_count / len(wells_fargo_summary_keywords), 1.0) * 2.0  # Double weight
+        score_factors.append(summary_score)
         
-        # 2. Currency amounts present
+        # 2. PENALTY for transaction page indicators
+        transaction_penalty_keywords = [
+            'transaction history',
+            'check deposits',
+            'check number',
+            'description withdrawals',
+            'transaction history (continued)'
+        ]
+        transaction_count = sum(1 for keyword in transaction_penalty_keywords if keyword in text_lower)
+        transaction_penalty = min(transaction_count / 3, 0.5)  # Max 50% penalty
+        
+        # 3. General financial keywords (medium weight)
+        general_keywords = ['balance', 'account', 'total', 'value', 'statement']
+        keyword_count = sum(1 for keyword in general_keywords if keyword in text_lower)
+        keyword_score = min(keyword_count / len(general_keywords), 1.0)
+        score_factors.append(keyword_score)
+        
+        # 4. Currency amounts
         import re
         currency_patterns = re.findall(r'\$[\d,]+\.?\d{0,2}', text)
         large_amounts = [amt for amt in currency_patterns if self._parse_currency_amount(amt) > 1000]
-        currency_score = min(len(large_amounts) / 5, 1.0)  # Cap at 5 amounts
+        currency_score = min(len(large_amounts) / 5, 1.0)
         score_factors.append(currency_score)
         
-        # 3. Date patterns (statements have dates)
-        date_patterns = re.findall(r'\d{1,2}[/\-]\d{1,2}[/\-]\d{4}', text)
-        date_score = min(len(date_patterns) / 3, 1.0)  # Cap at 3 dates
-        score_factors.append(date_score)
+        # 5. Calculate base score
+        base_score = sum(score_factors) / len(score_factors)
         
-        # 4. Balance-specific keywords (higher weight)
-        balance_keywords = ['balance', 'value', 'total', 'ending', 'beginning', 'portfolio']
-        balance_count = sum(1 for keyword in balance_keywords if keyword in text_lower)
-        balance_score = min(balance_count / len(balance_keywords), 1.0)
-        score_factors.append(balance_score * 1.5)  # Higher weight
+        # 6. Apply transaction penalty
+        final_score = max(0.0, base_score - transaction_penalty)
         
-        # 5. Institution-specific markers
-        institution_markers = ['wealthfront', 'schwab', 'robinhood', 'acorns', 'adp', 'statement', 'account']
-        institution_count = sum(1 for marker in institution_markers if marker in text_lower)
-        institution_score = min(institution_count / 3, 1.0)
-        score_factors.append(institution_score)
-        
-        # Calculate weighted average
-        final_score = sum(score_factors) / len(score_factors)
-        
-        logger.debug(f"Financial content score: {final_score:.2f} (keywords: {keyword_density:.2f}, currency: {currency_score:.2f}, dates: {date_score:.2f}, balance: {balance_score:.2f}, institution: {institution_score:.2f})")
+        logger.debug(f"Page scoring: base={base_score:.2f}, summary_boost={summary_score:.2f}, transaction_penalty={transaction_penalty:.2f}, final={final_score:.2f}")
         
         return min(final_score, 1.0)
-    
+
     def _parse_currency_amount(self, currency_str: str) -> float:
         """Parse currency string to float for scoring"""
         try:

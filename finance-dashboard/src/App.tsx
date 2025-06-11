@@ -11,6 +11,7 @@ import UploadView from './pages/UploadView';
 import TransactionExplorerPage from './pages/TransactionExplorerPage';
 import YearAnalysisPage from './pages/YearAnalysisPage';
 import InvestmentView from './pages/InvestmentView';
+import BankStatementsView from './pages/BankStatementsView';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -37,6 +38,7 @@ function App() {
               <Route path="/transactions" element={<TransactionExplorerPage />} />
               <Route path="/year-analysis" element={<YearAnalysisPage />} />
               <Route path="/investments" element={<InvestmentView />} /> 
+              <Route path="/bank-statements" element={<BankStatementsView />} />
             </Routes>
           </AppLayout>
         </div>

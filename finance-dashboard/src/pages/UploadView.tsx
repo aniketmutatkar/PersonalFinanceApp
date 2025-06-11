@@ -1,3 +1,4 @@
+// finance-dashboard/src/pages/UploadView.tsx (Updated)
 import React, { useState, useEffect } from 'react';
 import { Upload, FileText, TrendingUp, Building2, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useFileUpload } from '../hooks/useUploadData';
@@ -5,6 +6,7 @@ import FileUploadZone from '../components/upload/FileUploadZone';
 import TransactionReview from '../components/upload/TransactionReview';
 import UploadSummary from '../components/upload/UploadSummary';
 import MultiFileInvestmentUpload from '../components/upload/MultiFileInvestmentUpload';
+import MultiBankStatementUpload from '../components/upload/MultiBankStatementUpload';
 import { CategoryUpdate } from '../types/api';
 
 type UploadType = 'transactions' | 'investments' | 'bank' | null;
@@ -52,7 +54,7 @@ const uploadConfigs: Record<string, UploadTypeConfig> = {
   },
   bank: {
     title: 'Bank Statements',
-    description: 'Upload Wells Fargo and other bank statements to track account balances and cash flow.',
+    description: 'Upload bank statements from major banks to track account balances and cash flow.',
     features: [
       'Balance extraction',
       'Deposit/withdrawal tracking',
@@ -107,9 +109,6 @@ export default function UnifiedUploadView() {
     if (uploadType === 'transactions') {
       // Use existing transaction upload flow
       uploadPreview(selectedFiles);
-    } else if (uploadType === 'bank') {
-      // TODO: Implement bank statement upload
-      alert('Bank statement upload coming soon!');
     }
   };
 
@@ -256,22 +255,22 @@ export default function UnifiedUploadView() {
     return (
       <div className="space-y-6">
         <div className="space-y-6">
-        {/* Breadcrumb Navigation */}
-        <div className="flex items-center">
-          <button
-            onClick={handleBackToSelect}
-            className="text-sm text-gray-400 hover:text-gray-300 transition-colors flex items-center gap-1"
-          >
-            ← Back to upload types
-          </button>
+          {/* Breadcrumb Navigation */}
+          <div className="flex items-center">
+            <button
+              onClick={handleBackToSelect}
+              className="text-sm text-gray-400 hover:text-gray-300 transition-colors flex items-center gap-1"
+            >
+              ← Back to upload types
+            </button>
+          </div>
+          
+          {/* Page Header */}
+          <div>
+            <h1 className="text-3xl font-bold text-white">{config.title} Upload</h1>
+            <p className="text-gray-300 mt-2">{config.description}</p>
+          </div>
         </div>
-        
-        {/* Page Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-white">{config.title} Upload</h1>
-          <p className="text-gray-300 mt-2">{config.description}</p>
-        </div>
-      </div>
 
         {/* Upload Zone */}
         <FileUploadZone
@@ -307,36 +306,6 @@ export default function UnifiedUploadView() {
     );
   };
 
-  const renderBankUploadZone = () => {
-    return (
-      <div className="space-y-6">
-        <div className="space-y-6">
-        {/* Breadcrumb Navigation */}
-        <div className="flex items-center">
-          <button
-            onClick={handleBackToSelect}
-            className="text-sm text-gray-400 hover:text-gray-300 transition-colors flex items-center gap-1"
-          >
-            ← Back to upload types
-          </button>
-        </div>
-        
-        {/* Page Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-white">Bank Statements Upload</h1>
-          <p className="text-gray-300 mt-2">Upload Wells Fargo and other bank statements to track account balances and cash flow.</p>
-        </div>
-      </div>
-
-        <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-4">🏦</div>
-          <h3 className="text-xl font-semibold text-white mb-2">Bank Statement Upload Coming Soon!</h3>
-          <p className="text-gray-400">We're working on OCR processing for bank statements to extract beginning/ending balances and track your cash flow.</p>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="max-w-6xl mx-auto">
       {currentStep === 'select' && renderTypeSelection()}
@@ -345,9 +314,11 @@ export default function UnifiedUploadView() {
       {currentStep === 'upload' && uploadType === 'investments' && (
         <MultiFileInvestmentUpload onBackToSelect={handleBackToSelect} />
       )}
-      {currentStep === 'upload' && uploadType === 'bank' && renderBankUploadZone()}
+      {currentStep === 'upload' && uploadType === 'bank' && (
+        <MultiBankStatementUpload onBackToSelect={handleBackToSelect} />
+      )}
       
-      {currentStep === 'review' && previewData && (
+      {currentStep === 'review' && uploadType === 'transactions' && previewData && (
         <TransactionReview
           transactions={previewData.data.misc_transactions}
           onCategoryUpdates={handleCategoryUpdates}
@@ -355,7 +326,7 @@ export default function UnifiedUploadView() {
         />
       )}
       
-      {currentStep === 'summary' && confirmData && (
+      {currentStep === 'summary' && uploadType === 'transactions' && confirmData && (
         <UploadSummary
           summary={confirmData.data}
           onViewMonthly={handleViewMonthly}
@@ -363,8 +334,8 @@ export default function UnifiedUploadView() {
         />
       )}
       
-      {/* Loading overlay for transactions */}
-      {isLoading && (
+      {/* Loading overlay for transactions only */}
+      {isLoading && uploadType === 'transactions' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-gray-800 rounded-lg p-8 max-w-md mx-4">
             <div className="flex items-center gap-4">

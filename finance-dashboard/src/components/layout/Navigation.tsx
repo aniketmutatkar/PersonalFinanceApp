@@ -10,6 +10,7 @@ import {
   Search,  // Transaction Explorer
   TrendingUp,  // Add TrendingUp icon for Year Analysis
   PiggyBank,
+  Building2,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -22,6 +23,7 @@ const mainNavItems = [
   { to: '/budget', icon: Target, label: 'Budget' },
   { to: '/transactions', icon: Search, label: 'Transactions' },
   { to: '/investments', icon: PiggyBank, label: 'Investments' },
+  { to: '/bank-statements', icon: Building2, label: 'Bank Statements' },
 ];
 
 // Utility items (bottom section)
