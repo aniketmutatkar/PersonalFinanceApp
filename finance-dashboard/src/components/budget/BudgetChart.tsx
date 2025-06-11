@@ -1,4 +1,4 @@
-// src/components/budget/BudgetChart.tsx
+// src/components/budget/BudgetChart.tsx - Fixed Chronological Ordering
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -24,11 +24,27 @@ export default function BudgetChart({ data, type, year, monthYear }: BudgetChart
         .sort((a: any, b: any) => b.budget - a.budget)
         .slice(0, 10); // Top 10 categories
     } else {
-      // Yearly view - show average budget vs actual by month
+      // Yearly view - show budget vs actual by month in CHRONOLOGICAL order (Jan → Dec)
       const months = data.months || [];
       const budgetData = data.budget_data || {};
       
-      return months.map((month: string) => {
+      // Helper function to convert month name to number for sorting
+      const getMonthNumber = (monthYear: string): number => {
+        const monthName = monthYear.split(' ')[0];
+        const monthMap: { [key: string]: number } = {
+          'January': 1, 'February': 2, 'March': 3, 'April': 4,
+          'May': 5, 'June': 6, 'July': 7, 'August': 8,
+          'September': 9, 'October': 10, 'November': 11, 'December': 12
+        };
+        return monthMap[monthName] || 0;
+      };
+      
+      // Sort months chronologically (January → December)
+      const sortedMonths = months.sort((a: string, b: string) => {
+        return getMonthNumber(a) - getMonthNumber(b);
+      });
+      
+      return sortedMonths.map((month: string) => {
         const monthData = budgetData[month] || {};
         
         let monthlyBudget = 0;
@@ -44,12 +60,13 @@ export default function BudgetChart({ data, type, year, monthYear }: BudgetChart
         });
         
         return {
-          month: month.substring(0, 3), // Abbreviate month names
+          month: month.substring(0, 3), // Abbreviate month names (Jan, Feb, etc.)
           budget: monthlyBudget,
           actual: monthlyActual,
           variance: monthlyBudget - monthlyActual,
           overBudgetCount,
-          adherenceRate: totalCategories > 0 ? ((totalCategories - overBudgetCount) / totalCategories) * 100 : 100
+          adherenceRate: totalCategories > 0 ? 
+            ((totalCategories - overBudgetCount) / totalCategories) * 100 : 100
         };
       });
     }
@@ -122,17 +139,14 @@ export default function BudgetChart({ data, type, year, monthYear }: BudgetChart
                 fontSize={12}
                 angle={type === 'monthly' ? -45 : 0}
                 textAnchor={type === 'monthly' ? 'end' : 'middle'}
-                height={type === 'monthly' ? 60 : 30}
               />
               <YAxis 
                 stroke="#9CA3AF" 
                 fontSize={12}
-                tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                tickFormatter={formatCurrency}
               />
               <Tooltip content={<CustomTooltip />} />
-              <Legend 
-                wrapperStyle={{ color: '#D1D5DB' }}
-              />
+              <Legend />
               <Bar 
                 dataKey="budget" 
                 fill="#3B82F6" 
@@ -149,13 +163,8 @@ export default function BudgetChart({ data, type, year, monthYear }: BudgetChart
           </ResponsiveContainer>
         </div>
       ) : (
-        <div className="flex items-center justify-center h-64 text-gray-500">
-          <div className="text-center">
-            <p>No budget data available</p>
-            <p className="text-sm mt-2">
-              {type === 'monthly' ? 'No categories with budget data' : 'No monthly data found'}
-            </p>
-          </div>
+        <div className="flex items-center justify-center h-[400px] text-gray-500">
+          <p>No budget data available for {type === 'monthly' ? monthYear : year}</p>
         </div>
       )}
     </div>

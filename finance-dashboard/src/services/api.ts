@@ -28,6 +28,11 @@ import {
   BalanceListResponse,
 } from '../types/api';
 
+export interface MonthlySummariesParams {
+  year?: number;
+  sort_direction?: 'asc' | 'desc';
+}
+
 // API Client Class
 export class FinanceTrackerApi {
   private baseUrl: string;
@@ -113,9 +118,21 @@ export class FinanceTrackerApi {
   }
 
   // Monthly Summary API
-  async getMonthlySummaries(year?: number): Promise<MonthlySummaryListResponse> {
-    const queryParams = year ? `?year=${year}` : '';
-    return this.request<MonthlySummaryListResponse>(`/monthly-summary${queryParams}`);
+  async getMonthlySummaries(params?: MonthlySummariesParams): Promise<MonthlySummaryListResponse> {
+    const queryParams = new URLSearchParams();
+    
+    if (params?.year) {
+      queryParams.append('year', params.year.toString());
+    }
+    
+    if (params?.sort_direction) {
+      queryParams.append('sort_direction', params.sort_direction);
+    }
+    
+    const queryString = queryParams.toString();
+    const url = queryString ? `/monthly-summary?${queryString}` : '/monthly-summary';
+    
+    return this.request<MonthlySummaryListResponse>(url);
   }
   
   async getMonthlySummary(monthYear: string): Promise<MonthlySummary> {

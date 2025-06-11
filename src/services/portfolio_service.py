@@ -187,6 +187,7 @@ class PortfolioService:
     def get_portfolio_trends(self, period: str = "1y") -> PortfolioTrends:
         """
         Get portfolio trends with all accounts shown from start date (0 if no data)
+        Returns monthly values in reverse chronological order (newest first)
         """
         end_date = date.today()
         
@@ -205,6 +206,7 @@ class PortfolioService:
         monthly_values = []
         current_date = start_date.replace(day=1)
         
+        # Build monthly values in chronological order (oldest to newest)
         while current_date <= end_date:
             month_end = self._get_month_end(current_date)
             
@@ -248,6 +250,9 @@ class PortfolioService:
             else:
                 current_date = current_date.replace(month=current_date.month + 1)
         
+        # ✅ FIX: REVERSE the array so newest data comes first
+        monthly_values.reverse()
+        
         # Calculate growth attribution - FIXED LOGIC
         growth_attribution = self._calculate_growth_attribution(monthly_values, start_date, end_date)
         
@@ -267,7 +272,7 @@ class PortfolioService:
             best_month=best_month,
             worst_month=worst_month
         )
-
+    
     def _calculate_growth_attribution(
         self, 
         monthly_values: List[Dict], 

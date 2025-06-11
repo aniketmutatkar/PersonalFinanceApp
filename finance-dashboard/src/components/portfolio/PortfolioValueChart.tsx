@@ -153,33 +153,55 @@ export default function PortfolioValueChart({
     );
   }
 
-  // Prepare data for the chart - FILTER OUT EMPTY MONTHS
-  const chartData = data.monthly_values
-    .filter(value => value && typeof value.total_value === 'number' && value.total_value > 0) // More robust filtering
-    .map(value => {
-      // DEBUG: Log each value to see the structure
-      console.log('📊 Processing value:', value);
-      
-      const item: any = {
-        month_display: value.month_display || `${value.month || 'Unknown'} ${value.year || ''}`,
-        total_value: Number(value.total_value || 0),
+  const sortedMonthlyValues = [...data.monthly_values]
+    .filter(value => value && typeof value.total_value === 'number' && value.total_value > 0)
+    .sort((a, b) => {
+      // Parse dates for proper chronological sorting
+      const parseDate = (monthDisplay: string) => {
+        try {
+          // Handle formats like "Jan 2023" or "January 2023"
+          const [month, year] = monthDisplay.split(' ');
+          const monthMap: { [key: string]: number } = {
+            'Jan': 0, 'January': 0, 'Feb': 1, 'February': 1, 'Mar': 2, 'March': 2,
+            'Apr': 3, 'April': 3, 'May': 4, 'Jun': 5, 'June': 5,
+            'Jul': 6, 'July': 6, 'Aug': 7, 'August': 7, 'Sep': 8, 'September': 8,
+            'Oct': 9, 'October': 9, 'Nov': 10, 'November': 10, 'Dec': 11, 'December': 11
+          };
+          return new Date(parseInt(year), monthMap[month] || 0, 1);
+        } catch {
+          return new Date(0); // fallback
+        }
       };
-
-      // Add individual account values dynamically
-      if (value && typeof value === 'object') {
-        Object.keys(value).forEach(key => {
-          if (key !== 'month' && key !== 'year' && key !== 'month_display' && key !== 'total_value' && key !== 'date') {
-            const accountValue = value[key as keyof typeof value];
-            if (typeof accountValue === 'number' && !isNaN(accountValue)) { 
-              item[key] = accountValue;
-            }
-          }
-        });
-      }
-
-      console.log('📊 Processed item:', item);
-      return item;
+      
+      const dateA = parseDate(a.month_display || '');
+      const dateB = parseDate(b.month_display || '');
+      return dateA.getTime() - dateB.getTime(); // Oldest to newest
     });
+
+  const chartData = sortedMonthlyValues.map(value => {
+    // DEBUG: Log each value to see the structure
+    console.log('📊 Processing value:', value);
+    
+    const item: any = {
+      month_display: value.month_display || `${value.month || 'Unknown'} ${value.year || ''}`,
+      total_value: Number(value.total_value || 0),
+    };
+
+    // Add individual account values dynamically
+    if (value && typeof value === 'object') {
+      Object.keys(value).forEach(key => {
+        if (key !== 'month' && key !== 'year' && key !== 'month_display' && key !== 'total_value' && key !== 'date') {
+          const accountValue = value[key as keyof typeof value];
+          if (typeof accountValue === 'number' && !isNaN(accountValue)) { 
+            item[key] = accountValue;
+          }
+        }
+      });
+    }
+
+    console.log('📊 Processed item:', item);
+    return item;
+  });
 
   console.log('📊 Final chartData (filtered):', chartData);
   console.log('📊 Sample chartData item:', chartData[0]);

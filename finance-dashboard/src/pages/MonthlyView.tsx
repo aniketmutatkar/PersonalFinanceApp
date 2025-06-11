@@ -1,6 +1,6 @@
-// src/pages/MonthlyView.tsx
+// src/pages/MonthlyView.tsx - Fixed TypeScript errors
 import React, { useState, useMemo } from 'react';
-import { useMonthlySummaries, useTransactions } from '../hooks/useApiData';
+import { useMonthlySummariesRecent, useTransactions } from '../hooks/useApiData';
 import MonthSelector from '../components/monthly/MonthSelector';
 import MonthlyMetrics from '../components/monthly/MonthlyMetrics';
 import CategoryChart from '../components/monthly/CategoryChart';
@@ -8,14 +8,15 @@ import TransactionTable from '../components/monthly/TransactionTable';
 import LoadingSkeleton from '../components/ui/LoadingSkeleton';
 
 export default function MonthlyView() {
-  const { data: summariesResponse, isLoading: summariesLoading, isError: summariesError } = useMonthlySummaries();
+  // Use the recent hook for newest-first ordering (good for dropdowns)
+  const { data: summariesResponse, isLoading: summariesLoading, isError: summariesError } = useMonthlySummariesRecent();
   
   // Get the most recent month as default
   const defaultMonth = useMemo(() => {
     if (!summariesResponse?.summaries || summariesResponse.summaries.length === 0) {
       return '';
     }
-    // summaries are ordered by date DESC in your backend
+    // Data is already ordered newest first from API, so first item is most recent
     return summariesResponse.summaries[0].month_year;
   }, [summariesResponse]);
 
@@ -88,6 +89,7 @@ export default function MonthlyView() {
     );
   }
 
+  // Data is already in the correct order (newest first) for dropdown display
   const availableMonths = summariesResponse.summaries.map(s => ({
     value: s.month_year,
     label: s.month_year
@@ -131,33 +133,37 @@ export default function MonthlyView() {
               <h3 className="text-white font-semibold text-3xl mb-6">Transaction Summary</h3>
               
               {transactionsLoading ? (
-                <div className="space-y-4">
-                  {[1, 2, 3, 4].map(i => (
-                    <div key={i} className="h-4 bg-gray-700 rounded animate-pulse"></div>
-                  ))}
-                </div>
+                <LoadingSkeleton variant="list" lines={4} />
               ) : (
-                <div className="space-y-6">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400 text-xl">Total Transactions</span>
-                    <span className="text-white text-xl font-semibold">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-300">Total Transactions</span>
+                    <span className="text-white font-semibold">
                       {transactionsResponse?.total || 0}
                     </span>
                   </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-gray-400 text-xl">Total Amount</span>
-                    <span className="text-white text-xl font-semibold">
-                      ${selectedSummary.total_minus_invest.toLocaleString()}
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-300">Total Amount</span>
+                    <span className="text-white font-semibold">
+                      ${Math.abs(transactionsResponse?.total_sum || 0).toFixed(2)}
                     </span>
                   </div>
-                  
-                  <div className="flex justify-between">
-                    <span className="text-gray-400 text-xl">Investments</span>
-                    <span className="text-teal-400 text-xl font-semibold">
-                      ${selectedSummary.investment_total.toLocaleString()}
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-300">Average Transaction</span>
+                    <span className="text-white font-semibold">
+                      ${Math.abs(transactionsResponse?.avg_amount || 0).toFixed(2)}
                     </span>
                   </div>
+                  {selectedSummary && (
+                    <div className="pt-4 border-t border-gray-600">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-300">Month Total</span>
+                        <span className="text-white font-semibold">
+                          ${Math.abs(parseFloat(String(selectedSummary.total_minus_invest || '0'))).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

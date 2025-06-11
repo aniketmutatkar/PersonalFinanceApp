@@ -2,7 +2,7 @@
 Monthly summary repository for database operations related to monthly summaries.
 """
 
-from typing import List, Dict, Set, Tuple, Optional
+from typing import List, Dict, Set, Tuple, Optional, Literal
 from decimal import Decimal
 import pandas as pd
 from datetime import datetime
@@ -12,6 +12,7 @@ from src.models.models import MonthlySummary, Category
 from database import get_db_session
 from src.utils.date_utils import parse_month_period
 
+SortDirection = Literal["asc", "desc"]
 
 class MonthlySummaryRepository:
     """Repository for monthly summary database operations"""
@@ -113,12 +114,13 @@ class MonthlySummaryRepository:
         finally:
             session.close()
     
-    def find_by_year(self, year: int) -> List[MonthlySummary]:
+    def find_by_year(self, year: int, sort_direction: SortDirection = "desc") -> List[MonthlySummary]:
         """
         Find all monthly summaries for a specific year.
         
         Args:
             year: The year to find summaries for
+            sort_direction: 'asc' for oldest first, 'desc' for newest first
             
         Returns:
             List of monthly summaries for that year
@@ -126,23 +128,46 @@ class MonthlySummaryRepository:
         session = get_db_session()
         
         try:
-            query = text("""
+            # Build the ORDER BY clause based on sort direction
+            if sort_direction == "asc":
+                order_clause = """
+                ORDER BY CASE month
+                    WHEN 'January' THEN 1
+                    WHEN 'February' THEN 2
+                    WHEN 'March' THEN 3
+                    WHEN 'April' THEN 4
+                    WHEN 'May' THEN 5
+                    WHEN 'June' THEN 6
+                    WHEN 'July' THEN 7
+                    WHEN 'August' THEN 8
+                    WHEN 'September' THEN 9
+                    WHEN 'October' THEN 10
+                    WHEN 'November' THEN 11
+                    WHEN 'December' THEN 12
+                 END ASC
+                """
+            else:  # desc
+                order_clause = """
+                ORDER BY CASE month
+                    WHEN 'January' THEN 1
+                    WHEN 'February' THEN 2
+                    WHEN 'March' THEN 3
+                    WHEN 'April' THEN 4
+                    WHEN 'May' THEN 5
+                    WHEN 'June' THEN 6
+                    WHEN 'July' THEN 7
+                    WHEN 'August' THEN 8
+                    WHEN 'September' THEN 9
+                    WHEN 'October' THEN 10
+                    WHEN 'November' THEN 11
+                    WHEN 'December' THEN 12
+                 END DESC
+                """
+            
+            query = text(f"""
             SELECT * FROM monthly_summary 
             WHERE year = :year
-            ORDER BY CASE month
-                WHEN 'January' THEN 1
-                WHEN 'February' THEN 2
-                WHEN 'March' THEN 3
-                WHEN 'April' THEN 4
-                WHEN 'May' THEN 5
-                WHEN 'June' THEN 6
-                WHEN 'July' THEN 7
-                WHEN 'August' THEN 8
-                WHEN 'September' THEN 9
-                WHEN 'October' THEN 10
-                WHEN 'November' THEN 11
-                WHEN 'December' THEN 12
-             END
+            {order_clause}
             """)
             
             results = session.execute(query, {"year": year}).fetchall()
@@ -152,33 +177,60 @@ class MonthlySummaryRepository:
         finally:
             session.close()
     
-    def find_all(self) -> List[MonthlySummary]:
+    def find_all(self, sort_direction: SortDirection = "desc") -> List[MonthlySummary]:
         """
         Find all monthly summaries.
         
+        Args:
+            sort_direction: 'asc' for oldest first, 'desc' for newest first
+            
         Returns:
-            List of all monthly summaries
+            List of all monthly summaries sorted by date
         """
         session = get_db_session()
         
         try:
-            query = text("""
+            # Build the ORDER BY clause based on sort direction
+            if sort_direction == "asc":
+                order_clause = """
+                ORDER BY year ASC, 
+                         CASE month
+                            WHEN 'January' THEN 1
+                            WHEN 'February' THEN 2
+                            WHEN 'March' THEN 3
+                            WHEN 'April' THEN 4
+                            WHEN 'May' THEN 5
+                            WHEN 'June' THEN 6
+                            WHEN 'July' THEN 7
+                            WHEN 'August' THEN 8
+                            WHEN 'September' THEN 9
+                            WHEN 'October' THEN 10
+                            WHEN 'November' THEN 11
+                            WHEN 'December' THEN 12
+                         END ASC
+                """
+            else:  # desc (default - newest first)
+                order_clause = """
+                ORDER BY year DESC, 
+                         CASE month
+                            WHEN 'January' THEN 1
+                            WHEN 'February' THEN 2
+                            WHEN 'March' THEN 3
+                            WHEN 'April' THEN 4
+                            WHEN 'May' THEN 5
+                            WHEN 'June' THEN 6
+                            WHEN 'July' THEN 7
+                            WHEN 'August' THEN 8
+                            WHEN 'September' THEN 9
+                            WHEN 'October' THEN 10
+                            WHEN 'November' THEN 11
+                            WHEN 'December' THEN 12
+                         END DESC
+                """
+            
+            query = text(f"""
             SELECT * FROM monthly_summary
-            ORDER BY year DESC, 
-                     CASE month
-                        WHEN 'January' THEN 1
-                        WHEN 'February' THEN 2
-                        WHEN 'March' THEN 3
-                        WHEN 'April' THEN 4
-                        WHEN 'May' THEN 5
-                        WHEN 'June' THEN 6
-                        WHEN 'July' THEN 7
-                        WHEN 'August' THEN 8
-                        WHEN 'September' THEN 9
-                        WHEN 'October' THEN 10
-                        WHEN 'November' THEN 11
-                        WHEN 'December' THEN 12
-                     END
+            {order_clause}
             """)
             
             results = session.execute(query).fetchall()
@@ -193,49 +245,30 @@ class MonthlySummaryRepository:
         Map a database row to a domain entity.
         
         Args:
-            row: Database row
+            row: Database row result
             
         Returns:
-            MonthlySummary domain entity
+            Mapped MonthlySummary domain entity
         """
-        # Extract basic attributes with CORRECT indices
-        monthly_summary = MonthlySummary(
-            id=row[0],  # id
-            month=row[1],  # month
-            year=row[2],  # year
-            month_year=row[3],  # month_year
-            investment_total=Decimal(str(row[24])) if row[24] is not None else Decimal('0'),  # investment_total
-            total=Decimal(str(row[25])) if row[25] is not None else Decimal('0'),  # total
-            total_minus_invest=Decimal(str(row[26])) if row[26] is not None else Decimal('0')  # total_minus_invest
-        )
+        # Extract category totals (all columns except the standard ones)
+        standard_columns = {'id', 'month', 'year', 'month_year', 'investment_total', 'total', 'total_minus_invest'}
+        category_totals = {}
         
-        # We need a different approach to get column names
-        session = get_db_session()
-        try:
-            # Get column info from table
-            query = text("PRAGMA table_info(monthly_summary)")
-            columns_info = session.execute(query).fetchall()
-            column_names = [col[1] for col in columns_info]
-            
-            # Extract category totals (indices 4-23 are the category columns)
-            category_totals = {}
-            for i, col_name in enumerate(column_names):
-                # Skip non-category columns
-                if col_name in ['id', 'month', 'year', 'month_year', 'investment_total', 'total', 'total_minus_invest']:
-                    continue
-                
-                # If we have this many columns in the result
-                if i < len(row):
-                    # Add to category totals
-                    value = row[i]
-                    if value is not None:
-                        category_totals[col_name] = Decimal(str(value))
-            
-            monthly_summary.category_totals = category_totals
-            return monthly_summary
-        finally:
-            session.close()
-
+        for key in row._mapping.keys():
+            if key not in standard_columns and row._mapping[key] is not None:
+                category_totals[key] = Decimal(str(row._mapping[key]))
+        
+        return MonthlySummary(
+            id=row.id,
+            month=row.month,
+            year=row.year,
+            month_year=row.month_year,
+            category_totals=category_totals,
+            investment_total=Decimal(str(row.investment_total)) if row.investment_total else Decimal('0'),
+            total=Decimal(str(row.total)) if row.total else Decimal('0'),
+            total_minus_invest=Decimal(str(row.total_minus_invest)) if row.total_minus_invest else Decimal('0')
+        )
+    
     def update_from_transactions(self, affected_months: Dict[str, Set[str]], 
                                 categories: Dict[str, Category]) -> Tuple[int, int]:
         """

@@ -2,9 +2,9 @@
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
+import type { MonthlySummariesParams } from '../services/api';
 import { 
   FinancialOverview, 
-  MonthlySummaryListResponse, 
   Transaction, 
   PagedResponse, 
   BudgetAnalysisResponse,
@@ -42,13 +42,28 @@ export function useFinancialOverview(options?: UseQueryOptions<FinancialOverview
   });
 }
 
-// Monthly Summaries Hook
-export function useMonthlySummaries(year?: number, options?: UseQueryOptions<MonthlySummaryListResponse>) {
+export function useMonthlySummaries(params?: MonthlySummariesParams) {
   return useQuery({
-    queryKey: QUERY_KEYS.monthlySummaries(year),
-    queryFn: () => api.getMonthlySummaries(year),
-    staleTime: 10 * 60 * 1000, // 10 minutes
-    ...options,
+    queryKey: ['monthly-summaries', params],
+    queryFn: () => api.getMonthlySummaries(params),
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    gcTime: 1000 * 60 * 10, // 10 minutes
+  });
+}
+
+// Convenience hook for chronological data (charts)
+export function useMonthlySummariesChronological(year?: number) {
+  return useMonthlySummaries({
+    year,
+    sort_direction: 'asc' // oldest first for charts
+  });
+}
+
+// Convenience hook for reverse chronological data (lists/dropdowns)
+export function useMonthlySummariesRecent(year?: number) {
+  return useMonthlySummaries({
+    year,
+    sort_direction: 'desc' // newest first for lists
   });
 }
 
