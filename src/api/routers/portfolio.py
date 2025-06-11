@@ -654,34 +654,36 @@ async def upload_bank_statement(
             withdrawals_amount = Decimal(withdrawals_match.group(1).replace(',', ''))
         
         # Step 4: Create BankBalance object
-        if not all([statement_data.beginning_balance, statement_data.ending_balance, statement_data.statement_period_end]):
+        statement_date = statement_data.statement_date or statement_data.statement_period_end
+
+        if not all([statement_data.beginning_balance, statement_data.ending_balance, statement_date]):
             return {
                 "success": False,
                 "message": "Missing required balance data (beginning balance, ending balance, or statement date)",
                 "extracted_data": {
                     "beginning_balance": float(statement_data.beginning_balance) if statement_data.beginning_balance else None,
                     "ending_balance": float(statement_data.ending_balance) if statement_data.ending_balance else None,
-                    "statement_date": statement_data.statement_period_end.isoformat() if statement_data.statement_period_end else None
+                    "statement_date": statement_date.isoformat() if statement_date else None
                 }
             }
-        
+
         # Create statement month in YYYY-MM format
-        statement_month = statement_data.statement_period_end.strftime("%Y-%m")
-        
+        statement_month = statement_date.strftime("%Y-%m")
+
         bank_balance = BankBalance(
-            account_name=bank_repo.get_or_create_account_name(statement_data.institution, statement_data.account_type),
-            account_number=statement_data.account_number,
+            account_name="Checking",  # FIXED: Use consistent account name
+            account_number=None,      # FIXED: Don't include account number
             statement_month=statement_month,
             beginning_balance=statement_data.beginning_balance,
             ending_balance=statement_data.ending_balance,
             deposits_additions=deposits_amount,
             withdrawals_subtractions=withdrawals_amount,
-            statement_date=statement_data.statement_period_end,
-            data_source="pdf_statement",  # Use string instead of enum
+            statement_date=statement_date,  # FIXED: Use the correct date
+            data_source="pdf_statement",
             confidence_score=Decimal(str(statement_data.confidence_score)),
             notes=f"Auto-extracted from {file.filename}"
         )
-        
+                
         # Step 5: Check for duplicates
         existing_balance = bank_repo.get_balance_by_month("Wells Fargo Checking", statement_month)
         if existing_balance:
@@ -708,23 +710,24 @@ async def upload_bank_statement(
         # Step 7: Return success response
         return {
             "success": True,
-            "message": f"Successfully imported bank statement for {statement_month}",
+            "message": "Bank statement processed successfully",
             "bank_balance": {
-                "id": saved_balance.id,
+                "id": saved_balance.id, 
                 "account_name": saved_balance.account_name,
                 "account_number": saved_balance.account_number,
                 "statement_month": saved_balance.statement_month,
+                "statement_date": saved_balance.statement_date.isoformat(),
                 "beginning_balance": float(saved_balance.beginning_balance),
                 "ending_balance": float(saved_balance.ending_balance),
                 "deposits_additions": float(saved_balance.deposits_additions) if saved_balance.deposits_additions else None,
                 "withdrawals_subtractions": float(saved_balance.withdrawals_subtractions) if saved_balance.withdrawals_subtractions else None,
-                "statement_date": saved_balance.statement_date.isoformat(),
-                "confidence_score": float(saved_balance.confidence_score),
-                "data_source": saved_balance.data_source
             },
-            "extraction_confidence": extraction_confidence,
-            "parsing_confidence": statement_data.confidence_score,
-            "extraction_notes": statement_data.extraction_notes
+            "parsing_confidence": float(statement_data.confidence_score),
+            "extraction_notes": [
+                f"Extracted from page {relevant_page} of {total_pages}",
+                f"OCR confidence: {extraction_confidence:.1%}",
+                f"Data extraction confidence: {statement_data.confidence_score:.1%}"
+            ]
         }
         
     except Exception as e:

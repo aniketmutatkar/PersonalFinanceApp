@@ -154,7 +154,7 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
         if (response.ok) {
           const result = await response.json();
           
-          // Update with successful results
+          // Update with successful results - Handle the actual API response structure
           setProcessedStatements(prev => prev.map(stmt => 
             stmt.id === `statement_${i}` 
               ? { 
@@ -162,17 +162,17 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
                   status: 'completed',
                   extractedData: {
                     institution: 'Wells Fargo',
-                    account_name: result.bank_balance.account_name,
-                    account_number: result.bank_balance.account_number,
-                    statement_month: result.bank_balance.statement_month,
-                    beginning_balance: result.bank_balance.beginning_balance,
-                    ending_balance: result.bank_balance.ending_balance,
-                    deposits_additions: result.bank_balance.deposits_additions,
-                    withdrawals_subtractions: result.bank_balance.withdrawals_subtractions,
-                    confidence_score: result.parsing_confidence,
-                    extraction_notes: result.extraction_notes
+                    account_name: result.bank_balance?.account_name || 'Checking',
+                    account_number: result.bank_balance?.account_number || null,
+                    statement_month: result.bank_balance?.statement_month || null,
+                    beginning_balance: result.bank_balance?.beginning_balance || null,
+                    ending_balance: result.bank_balance?.ending_balance || null,
+                    deposits_additions: result.bank_balance?.deposits_additions || null,
+                    withdrawals_subtractions: result.bank_balance?.withdrawals_subtractions || null,
+                    confidence_score: result.parsing_confidence || 0,
+                    extraction_notes: result.extraction_notes || []
                   },
-                  bank_balance_id: result.bank_balance.id
+                  bank_balance_id: result.bank_balance?.id || null
                 }
               : stmt
           ));
@@ -201,7 +201,7 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
     
     if (statement.extractedData) {
       setReviewFormData({
-        account_name: statement.extractedData.account_name || '',
+        account_name: statement.extractedData.account_name || 'Checking',
         statement_month: statement.extractedData.statement_month || '',
         beginning_balance: statement.extractedData.beginning_balance?.toString() || '',
         ending_balance: statement.extractedData.ending_balance?.toString() || '',
@@ -494,7 +494,7 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div className="bg-gray-700/50 rounded-lg p-4">
                       <h4 className="text-sm font-medium text-gray-400 mb-1">Account</h4>
-                      <p className="text-white">{statement.extractedData.account_name}</p>
+                      <p className="text-white">{statement.extractedData.account_name || 'Checking'}</p>
                       {statement.extractedData.account_number && (
                         <p className="text-sm text-gray-400">#{statement.extractedData.account_number}</p>
                       )}
@@ -502,17 +502,21 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
                     
                     <div className="bg-gray-700/50 rounded-lg p-4">
                       <h4 className="text-sm font-medium text-gray-400 mb-1">Statement Period</h4>
-                      <p className="text-white">{statement.extractedData.statement_month}</p>
+                      <p className="text-white">{statement.extractedData.statement_month || 'Unknown'}</p>
                     </div>
                     
                     <div className="bg-gray-700/50 rounded-lg p-4">
                       <h4 className="text-sm font-medium text-gray-400 mb-1">Beginning Balance</h4>
-                      <p className="text-white font-semibold">${statement.extractedData.beginning_balance?.toLocaleString()}</p>
+                      <p className="text-white font-semibold">
+                        {statement.extractedData.beginning_balance ? `${statement.extractedData.beginning_balance.toLocaleString()}` : 'Not found'}
+                      </p>
                     </div>
                     
                     <div className="bg-gray-700/50 rounded-lg p-4">
                       <h4 className="text-sm font-medium text-gray-400 mb-1">Ending Balance</h4>
-                      <p className="text-green-400 font-semibold">${statement.extractedData.ending_balance?.toLocaleString()}</p>
+                      <p className="text-green-400 font-semibold">
+                        {statement.extractedData.ending_balance ? `${statement.extractedData.ending_balance.toLocaleString()}` : 'Not found'}
+                      </p>
                     </div>
                     
                     {statement.extractedData.deposits_additions && (
@@ -569,7 +573,7 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
 
   const renderSummaryStep = () => (
     <div className="space-y-6">
-      {/* Success Header */}
+      {/* Success Header - Clean like other uploads */}
       <div className="space-y-6">
         <div className="flex items-center">
           <button
@@ -581,38 +585,62 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
         </div>
         
         <div>
-          <h1 className="text-3xl font-bold text-white">Statements Processed Successfully!</h1>
+          <h1 className="text-3xl font-bold text-white">Upload Complete</h1>
           <p className="text-gray-300 mt-2">
             Successfully processed {uploadSummary?.successful || 0} of {uploadSummary?.total_processed || 0} bank statements.
           </p>
         </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* What Was Uploaded */}
+      {uploadSummary?.statements && uploadSummary.statements.length > 0 && (
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <h3 className="text-lg font-semibold text-white mb-4">Uploaded Statements</h3>
+          <div className="space-y-3">
+            {uploadSummary.statements.map((statement: any, index: number) => (
+              <div key={index} className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <FileText className="w-5 h-5 text-blue-400" />
+                  <div>
+                    <p className="text-white font-medium">{statement.filename}</p>
+                    <p className="text-gray-400 text-sm">
+                      {statement.extractedData?.statement_month || 'Unknown month'} • 
+                      ${statement.extractedData?.ending_balance?.toLocaleString() || 'N/A'} ending balance
+                    </p>
+                  </div>
+                </div>
+                <CheckCircle className="w-5 h-5 text-green-400" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Summary Cards - Same style as other pages */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gray-800 rounded-lg p-6">
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
           <h3 className="text-sm font-medium text-gray-400 mb-2">Statements Processed</h3>
           <p className="text-2xl font-bold text-white">{uploadSummary?.total_processed || 0}</p>
         </div>
         
-        <div className="bg-gray-800 rounded-lg p-6">
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
           <h3 className="text-sm font-medium text-gray-400 mb-2">Successful</h3>
           <p className="text-2xl font-bold text-green-400">{uploadSummary?.successful || 0}</p>
         </div>
         
-        <div className="bg-gray-800 rounded-lg p-6">
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
           <h3 className="text-sm font-medium text-gray-400 mb-2">Failed</h3>
           <p className="text-2xl font-bold text-red-400">{uploadSummary?.failed || 0}</p>
         </div>
       </div>
 
-      {/* Action Buttons */}
+      {/* Action Buttons - Clean style */}
       <div className="flex gap-4">
         <button
           onClick={() => window.location.href = '/bank-statements'}
-          className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
+          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
         >
-          View All Bank Statements
+          View Bank Statements
         </button>
         
         <button
@@ -624,7 +652,7 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
           }}
           className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium transition-colors"
         >
-          Upload More Statements
+          Upload More
         </button>
       </div>
     </div>
