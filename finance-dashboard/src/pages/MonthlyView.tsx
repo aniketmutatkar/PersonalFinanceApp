@@ -1,9 +1,10 @@
-// src/pages/MonthlyView.tsx - Fixed TypeScript errors
+// src/pages/MonthlyView.tsx - Fixed with previous month data and enhanced spending patterns
 import React, { useState, useMemo } from 'react';
 import { useMonthlySummariesRecent, useTransactions } from '../hooks/useApiData';
 import MonthSelector from '../components/monthly/MonthSelector';
 import MonthlyMetrics from '../components/monthly/MonthlyMetrics';
 import CategoryChart from '../components/monthly/CategoryChart';
+import SpendingPatternsChart from '../components/monthly/SpendingPatternsChart';
 import TransactionTable from '../components/monthly/TransactionTable';
 import LoadingSkeleton from '../components/ui/LoadingSkeleton';
 
@@ -29,10 +30,21 @@ export default function MonthlyView() {
     }
   }, [defaultMonth, selectedMonth]);
 
-  // Get selected month data
-  const selectedSummary = useMemo(() => {
-    if (!summariesResponse?.summaries || !selectedMonth) return null;
-    return summariesResponse.summaries.find(s => s.month_year === selectedMonth);
+  // Get selected month data and previous month data
+  const { selectedSummary, previousSummary } = useMemo(() => {
+    if (!summariesResponse?.summaries || !selectedMonth) {
+      return { selectedSummary: null, previousSummary: null };
+    }
+    
+    const selectedIndex = summariesResponse.summaries.findIndex(s => s.month_year === selectedMonth);
+    const selected = summariesResponse.summaries[selectedIndex] || null;
+    
+    // Get previous month (next index since array is newest-first)
+    const previous = selectedIndex < summariesResponse.summaries.length - 1 
+      ? summariesResponse.summaries[selectedIndex + 1] 
+      : null;
+    
+    return { selectedSummary: selected, previousSummary: previous };
   }, [summariesResponse, selectedMonth]);
 
   // Fetch transactions for selected month
@@ -117,10 +129,13 @@ export default function MonthlyView() {
         <div className="flex-1 grid grid-cols-12 gap-8">
           {/* Monthly Metrics - Top Row */}
           <div className="col-span-12">
-            <MonthlyMetrics summary={selectedSummary} />
+            <MonthlyMetrics 
+              summary={selectedSummary} 
+              previousSummary={previousSummary}
+            />
           </div>
 
-          {/* Category Chart and Transaction Summary - Middle Row */}
+          {/* Category Chart and Spending Patterns - Middle Row */}
           <div className="col-span-6">
             <CategoryChart 
               summary={selectedSummary}
@@ -129,44 +144,10 @@ export default function MonthlyView() {
           </div>
 
           <div className="col-span-6">
-            <div className="bg-gray-800 border border-gray-600 rounded-lg p-8 h-full">
-              <h3 className="text-white font-semibold text-3xl mb-6">Transaction Summary</h3>
-              
-              {transactionsLoading ? (
-                <LoadingSkeleton variant="list" lines={4} />
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-300">Total Transactions</span>
-                    <span className="text-white font-semibold">
-                      {transactionsResponse?.total || 0}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-300">Total Amount</span>
-                    <span className="text-white font-semibold">
-                      ${Math.abs(transactionsResponse?.total_sum || 0).toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-300">Average Transaction</span>
-                    <span className="text-white font-semibold">
-                      ${Math.abs(transactionsResponse?.avg_amount || 0).toFixed(2)}
-                    </span>
-                  </div>
-                  {selectedSummary && (
-                    <div className="pt-4 border-t border-gray-600">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-300">Month Total</span>
-                        <span className="text-white font-semibold">
-                          ${Math.abs(parseFloat(String(selectedSummary.total_minus_invest || '0'))).toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <SpendingPatternsChart 
+              transactions={transactionsResponse?.items || []}
+              monthYear={selectedSummary.month_year}
+            />
           </div>
 
           {/* Transaction Table - Bottom Row */}
