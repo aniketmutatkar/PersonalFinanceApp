@@ -7,6 +7,7 @@ import CategoryChart from '../components/monthly/CategoryChart';
 import SpendingPatternsChart from '../components/monthly/SpendingPatternsChart';
 import TransactionTable from '../components/monthly/TransactionTable';
 import LoadingSkeleton from '../components/ui/LoadingSkeleton';
+import PageHeader from '../components/layout/PageHeader';
 
 export default function MonthlyView() {
   // Use the recent hook for newest-first ordering (good for dropdowns)
@@ -110,20 +111,17 @@ export default function MonthlyView() {
   return (
     <div className="h-full flex flex-col">
       {/* Page Header */}
-      <div className="mb-12 flex justify-between items-end">
-        <div>
-          <h1 className="text-5xl font-bold text-white mb-4">Monthly Analysis</h1>
-          <p className="text-xl text-gray-400">
-            Detailed breakdown and transaction analysis
-          </p>
-        </div>
-        
-        <MonthSelector
-          options={availableMonths}
-          value={selectedMonth}
-          onChange={setSelectedMonth}
-        />
-      </div>
+      <PageHeader
+        title="Monthly Analysis"
+        subtitle="Detailed breakdown and transaction analysis"
+        actions={
+          <MonthSelector
+            options={availableMonths}
+            value={selectedMonth}
+            onChange={setSelectedMonth}
+          />
+        }
+      />
 
       {selectedSummary && (
         <div className="flex-1 grid grid-cols-12 gap-8">

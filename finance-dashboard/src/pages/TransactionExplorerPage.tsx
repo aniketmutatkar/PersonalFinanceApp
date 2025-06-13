@@ -10,6 +10,7 @@ import TransactionFilters from '../components/transactions/TransactionFilters';
 import TransactionTable from '../components/transactions/TransactionTable';
 import TransactionStats from '../components/transactions/TransactionStats';
 import LoadingSkeleton from '../components/ui/LoadingSkeleton';
+import PageHeader from '../components/layout/PageHeader';
 
 interface Filters {
   categories: string[];
@@ -136,16 +137,6 @@ export default function TransactionExplorerPage() {
     placeholderData: (previousData) => previousData, // Updated from keepPreviousData
   });
 
-  // Export functionality
-  const handleExport = async () => {
-    try {
-      // For now, just show alert - you can implement actual export later
-      alert('Export functionality will download CSV with current filters applied');
-    } catch (error) {
-      console.error('Export failed:', error);
-    }
-  };
-
   // Clear all filters
   const handleClearFilters = () => {
     const clearedFilters: Filters = {
@@ -172,31 +163,6 @@ export default function TransactionExplorerPage() {
            filters.endDate ||
            filters.month;
   }, [filters]);
-
-  // Format filter summary for display
-  const getFilterSummary = () => {
-    const parts = [];
-    
-    if (filters.categories.length > 0) {
-      parts.push(`${filters.categories.length} categories`);
-    }
-    if (filters.description) {
-      parts.push(`"${filters.description}"`);
-    }
-    if (filters.month) {
-      parts.push(`Month: ${filters.month}`);
-    } else if (filters.startDate || filters.endDate) {
-      if (filters.startDate && filters.endDate) {
-        parts.push(`${filters.startDate} to ${filters.endDate}`);
-      } else if (filters.startDate) {
-        parts.push(`From ${filters.startDate}`);
-      } else if (filters.endDate) {
-        parts.push(`Until ${filters.endDate}`);
-      }
-    }
-    
-    return parts.join(' • ');
-  };
 
   if (transactionsError) {
     return (
@@ -235,23 +201,16 @@ export default function TransactionExplorerPage() {
   return (
     <div className="h-full flex flex-col space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white mb-2">Transaction Explorer</h1>
-          <p className="text-sm text-gray-400">
-            Search and filter your financial transactions with advanced controls
-          </p>
-        </div>
-        
-        <button
-          onClick={handleExport}
-          disabled={!transactionsData?.items?.length}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          <Download className="w-4 h-4" />
-          Export
-        </button>
-      </div>
+      <PageHeader
+        title="Transaction Explorer"
+        subtitle="Search and filter your financial transactions with advanced controls"
+        actions={
+          <button className="btn-primary btn-sm">
+            <Download className="w-4 h-4 mr-2" />
+            Export
+          </button>
+        }
+      />
 
       {/* Stats */}
       {transactionsData && (

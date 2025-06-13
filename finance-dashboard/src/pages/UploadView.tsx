@@ -8,6 +8,7 @@ import UploadSummary from '../components/upload/UploadSummary';
 import MultiFileInvestmentUpload from '../components/upload/MultiFileInvestmentUpload';
 import MultiBankStatementUpload from '../components/upload/MultiBankStatementUpload';
 import { CategoryUpdate } from '../types/api';
+import PageHeader from '../components/layout/PageHeader';
 
 type UploadType = 'transactions' | 'investments' | 'bank' | null;
 type UploadStep = 'select' | 'upload' | 'review' | 'summary';
@@ -196,14 +197,10 @@ export default function UnifiedUploadView() {
 
   const renderTypeSelection = () => (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-white mb-4">Upload Center</h1>
-        <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-          Import your financial data from transactions, investment statements, and bank statements. 
-          Choose your upload type below to get started.
-        </p>
-      </div>
+        <PageHeader
+          title="Upload Center"
+          subtitle="Choose your upload type below to get started"
+        />
 
       {/* Upload Type Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

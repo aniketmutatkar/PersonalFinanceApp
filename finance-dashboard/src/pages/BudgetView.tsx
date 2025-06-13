@@ -6,6 +6,7 @@ import BudgetMetrics from '../components/budget/BudgetMetrics';
 import BudgetChart from '../components/budget/BudgetChart';
 import BudgetTable from '../components/budget/BudgetTable';
 import LoadingSkeleton from '../components/ui/LoadingSkeleton';
+import PageHeader from '../components/layout/PageHeader';
 
 export default function BudgetView() {
   const [selectedView, setSelectedView] = useState<'yearly' | 'monthly'>('yearly');
@@ -109,66 +110,60 @@ export default function BudgetView() {
   return (
     <div className="h-screen p-8 flex flex-col">
       {/* Page Header - Fixed height */}
-      <div className="mb-8 flex justify-between items-end flex-shrink-0">
-        <div>
-          <h1 className="text-2xl font-bold text-white mb-2">Budget Analysis</h1>
-          <p className="text-sm text-gray-400">
-            Track your spending against planned budgets
-            {selectedView === 'yearly' && previousYearBudgetData && (
-              <span className="ml-2 text-green-400">• Year-over-year trends enabled</span>
-            )}
-          </p>
-        </div>
-        
-        <div className="flex items-center space-x-4">
-          {/* View Toggle */}
-          <div className="flex bg-gray-700 rounded-lg p-1">
-            <button
-              onClick={() => setSelectedView('yearly')}
-              className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                selectedView === 'yearly'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-300 hover:text-white'
-              }`}
-            >
-              Yearly View
-            </button>
-            <button
-              onClick={() => setSelectedView('monthly')}
-              className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                selectedView === 'monthly'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-300 hover:text-white'
-              }`}
-            >
-              Monthly View
-            </button>
-          </div>
+      <PageHeader
+        title="Budget Analysis"
+        subtitle={`Track your spending against planned budgets${selectedView === 'yearly' && previousYearBudgetData ? ' • Year-over-year trends enabled' : ''}`}
+        actions={
+          <div className="flex items-center space-x-4">
+            {/* View Toggle */}
+            <div className="flex bg-gray-700 rounded-lg p-1">
+              <button
+                onClick={() => setSelectedView('yearly')}
+                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                  selectedView === 'yearly'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                Yearly View
+              </button>
+              <button
+                onClick={() => setSelectedView('monthly')}
+                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                  selectedView === 'monthly'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                Monthly View
+              </button>
+            </div>
 
-          {/* Year/Month Selector */}
-          {selectedView === 'yearly' ? (
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="
-                bg-gray-800 border border-gray-600 rounded-lg
-                px-4 py-2 text-white text-sm
-                focus:outline-none focus:border-blue-500
-              "
-            >
-              {availableYears.map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
-          ) : (
-            <MonthSelector
-              options={availableMonths}
-              value={selectedMonth}
-              onChange={setSelectedMonth}
-            />
-          )}
-        </div>
-      </div>
+            {/* Year/Month Selector */}
+            {selectedView === 'yearly' ? (
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="
+                  bg-gray-800 border border-gray-600 rounded-lg
+                  px-4 py-2 text-white text-sm
+                  focus:outline-none focus:border-blue-500
+                "
+              >
+                {availableYears.map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            ) : (
+              <MonthSelector
+                options={availableMonths}
+                value={selectedMonth}
+                onChange={setSelectedMonth}
+              />
+            )}
+          </div>
+        }
+      />
 
       {/* Budget Content - FIXED VERTICAL SPACING */}
       <div className="flex-1 min-h-0 space-y-8">

@@ -1,6 +1,7 @@
-// src/components/dashboard/NetWorthChart.tsx
+// src/components/dashboard/NetWorthChart.tsx - PHASE 2 CONVERSION
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import ChartContainer from '../charts/ChartContainer';
 
 interface NetWorthData {
   month: string;
@@ -28,16 +29,16 @@ function NetWorthChart({ data, currentNetWorth }: NetWorthChartProps) {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-gray-800 border border-gray-600 rounded-lg p-4 shadow-lg">
-          <p className="text-white font-medium mb-2">{label}</p>
+        <div className="card-compact">
+          <p className="text-primary font-medium element-gap">{label}</p>
           <div className="space-y-1">
-            <p className="text-teal-400 font-bold">
+            <p className="text-success font-bold">
               Net Worth: {formatCurrency(data.net_worth)}
             </p>
-            <p className="text-blue-400 text-sm">
+            <p className="text-info text-sm">
               Liquid: {formatCurrency(data.liquid_assets)}
             </p>
-            <p className="text-green-400 text-sm">
+            <p className="text-accent text-sm">
               Invested: {formatCurrency(data.investment_assets)}
             </p>
           </div>
@@ -47,17 +48,22 @@ function NetWorthChart({ data, currentNetWorth }: NetWorthChartProps) {
     return null;
   };
 
+  // Trend indicator component - DESIGN SYSTEM
+  const TrendIndicator = () => (
+    <span className="text-success text-sm flex items-center">
+      <span className="mr-1">↗</span>
+      Trending Up
+    </span>
+  );
+
   return (
-    <div className="bg-gray-800 border border-gray-600 rounded-lg p-6 h-full">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-white font-semibold text-lg">Net Worth Growth (24 Months)</h3>
-        <span className="text-teal-400 text-sm flex items-center">
-          <span className="mr-1">↗</span>
-          Trending Up
-        </span>
-      </div>
-      
-      <div className="h-64">
+    <ChartContainer
+      title="Net Worth Growth (24 Months)"
+      headerAction={<TrendIndicator />}
+      variant="large"
+    >
+      {/* Chart Section - DESIGN SYSTEM */}
+      <div className="h-64 mb-4">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -86,13 +92,14 @@ function NetWorthChart({ data, currentNetWorth }: NetWorthChartProps) {
         </ResponsiveContainer>
       </div>
       
-      <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-700">
-        <span className="text-xs text-gray-400">24 months ago</span>
-        <span className="text-sm text-teal-400 font-medium">
+      {/* Footer Section - DESIGN SYSTEM */}
+      <div className="flex justify-between items-center pt-4 border-t border-gray-700">
+        <span className="text-xs text-muted">24 months ago</span>
+        <span className="text-sm text-success font-medium">
           Current: {formatCurrency(currentNetWorth)}
         </span>
       </div>
-    </div>
+    </ChartContainer>
   );
 }
 

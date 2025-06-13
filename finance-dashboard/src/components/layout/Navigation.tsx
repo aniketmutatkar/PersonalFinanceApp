@@ -1,4 +1,4 @@
-// src/components/layout/Navigation.tsx
+// src/components/layout/Navigation.tsx - PHASE 1 CONVERSION
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
@@ -41,18 +41,18 @@ export default function Navigation() {
   return (
     <nav className={`${isCollapsed ? 'w-16' : 'w-48'} bg-gray-800 border-r border-gray-700 flex flex-col transition-all duration-300 ease-in-out`}>
       <div className="flex-1 p-4">
-        {/* Header with collapse button */}
-        <div className="flex items-center justify-between mb-6">
+        {/* Header with collapse button - DESIGN SYSTEM */}
+        <div className="flex items-center justify-between content-gap">
           {!isCollapsed && (
             <div className="flex items-center space-x-2">
-              <DollarSign className="h-6 w-6 text-green-500" />
-              <h1 className="text-lg font-bold text-white">Finance Tracker</h1>
+              <DollarSign className="h-6 w-6 text-success" />
+              <h1 className="text-lg font-bold text-primary">Finance Tracker</h1>
             </div>
           )}
           
           <button
             onClick={toggleCollapse}
-            className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            className="p-1.5 rounded-md text-muted hover:text-primary hover:bg-gray-700 transition-colors focus-ring"
             title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {isCollapsed ? (
@@ -63,7 +63,7 @@ export default function Navigation() {
           </button>
         </div>
         
-        {/* Main navigation items */}
+        {/* Main navigation items - DESIGN SYSTEM */}
         <ul className="space-y-1">
           {mainNavItems.map(({ to, icon: Icon, label }) => (
             <li key={to}>
@@ -72,8 +72,8 @@ export default function Navigation() {
                 className={({ isActive }) =>
                   `flex items-center ${isCollapsed ? 'justify-center px-3 py-3' : 'space-x-2.5 px-3 py-2.5'} rounded-md transition-colors group relative ${
                     isActive
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                      ? 'bg-info text-primary'
+                      : 'text-secondary hover:bg-gray-700 hover:text-primary'
                   }`
                 }
                 title={isCollapsed ? label : undefined}
@@ -83,9 +83,9 @@ export default function Navigation() {
                   <span className="font-medium text-sm">{label}</span>
                 )}
                 
-                {/* Tooltip for collapsed state */}
+                {/* Tooltip for collapsed state - DESIGN SYSTEM */}
                 {isCollapsed && (
-                  <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+                  <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-primary text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
                     {label}
                   </div>
                 )}
@@ -95,7 +95,7 @@ export default function Navigation() {
         </ul>
       </div>
 
-      {/* Utility section at bottom */}
+      {/* Utility section at bottom - DESIGN SYSTEM */}
       <div className="p-4 border-t border-gray-700">
         <ul className="space-y-1">
           {utilityNavItems.map(({ to, icon: Icon, label }) => (
@@ -105,8 +105,8 @@ export default function Navigation() {
                 className={({ isActive }) =>
                   `flex items-center ${isCollapsed ? 'justify-center px-3 py-3' : 'space-x-2.5 px-3 py-2.5'} rounded-md transition-colors group relative ${
                     isActive
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                      ? 'bg-info text-primary'
+                      : 'text-secondary hover:bg-gray-700 hover:text-primary'
                   }`
                 }
                 title={isCollapsed ? label : undefined}
@@ -116,9 +116,9 @@ export default function Navigation() {
                   <span className="font-medium text-sm">{label}</span>
                 )}
                 
-                {/* Tooltip for collapsed state */}
+                {/* Tooltip for collapsed state - DESIGN SYSTEM */}
                 {isCollapsed && (
-                  <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+                  <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-primary text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
                     {label}
                   </div>
                 )}

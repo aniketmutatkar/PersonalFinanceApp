@@ -9,6 +9,7 @@ import FinancialPatternChart from '../components/dashboard/FinancialPatternChart
 import CategoryInsights from '../components/dashboard/CategoryInsights';
 import InvestmentInsights from '../components/dashboard/InvestmentInsights';
 import DrillDownCard from '../components/dashboard/DrillDownCard';
+import PageHeader from '../components/layout/PageHeader';
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -161,15 +162,10 @@ export default function Dashboard() {
   return (
     <div className="h-full flex flex-col space-y-6 pb-8">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-white mb-1">Financial Health Check</h1>
-          <p className="text-gray-400">
-            {overview.date_range.end_month} • {overview.date_range.total_months} months analyzed • Net Worth: {formatCurrency(currentNetWorth)}
-            {totalGrowth !== 0 && ` (${totalGrowth > 0 ? '+' : ''}${formatCurrency(totalGrowth)})`}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Financial Health Check"
+        subtitle={`${overview.date_range.end_month} • ${overview.date_range.total_months} months analyzed • Net Worth: ${formatCurrency(currentNetWorth)}${totalGrowth !== 0 ? ` (${totalGrowth > 0 ? '+' : ''}${formatCurrency(totalGrowth)})` : ''}`}
+      />
 
       {/* Financial Progress - 3 Key Metrics */}
       <div className="grid grid-cols-3 gap-6">

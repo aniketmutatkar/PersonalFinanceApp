@@ -1,4 +1,4 @@
-// src/components/dashboard/InvestmentInsights.tsx
+// src/components/dashboard/InvestmentInsights.tsx - PHASE 2 CONVERSION
 import React from 'react';
 
 interface InvestmentInsightsProps {
@@ -27,22 +27,28 @@ function InvestmentInsights({ overview }: InvestmentInsightsProps) {
   const investmentRatio = (totalInvested / totalNetWorth) * 100;
   
   return (
-    <div className="bg-gray-800 border border-gray-600 rounded-lg p-6 h-full">
-      <h3 className="text-white font-semibold mb-4 text-lg">Investment Analysis</h3>
+    <div className="card-standard h-full flex flex-col">
+      {/* Header - DESIGN SYSTEM */}
+      <div className="content-gap flex-shrink-0">
+        <h3 className="section-title">Investment Analysis</h3>
+      </div>
       
-      <div className="space-y-4">
-        {/* Investment Rate */}
-        <div className="bg-blue-900/20 rounded-lg p-4 border border-blue-800/30">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-blue-400 font-medium">Investment Rate</span>
-            <span className="text-2xl font-bold text-blue-400">
+      {/* Content - DESIGN SYSTEM */}
+      <div className="flex-1 space-y-6">
+        {/* Investment Rate Card - DESIGN SYSTEM */}
+        <div className="card-info p-4">
+          <div className="flex justify-between items-start element-gap">
+            <span className="label-primary">Investment Rate</span>
+            <span className="metric-medium text-info">
               {formatPercentage(investmentRate)}
             </span>
           </div>
-          <div className="text-sm text-gray-300">
+          
+          <div className="text-sm text-secondary tight-gap">
             {formatCurrency(monthlyInvestment)}/month of {formatCurrency(overview.cash_flow_analysis.monthly_income)} income
           </div>
-          <div className="text-xs text-blue-300 mt-1">
+          
+          <div className="text-xs text-info">
             {investmentRate > 40 ? 'Exceptionally aggressive' :
              investmentRate > 30 ? 'Very aggressive' :
              investmentRate > 20 ? 'Aggressive' :
@@ -50,18 +56,20 @@ function InvestmentInsights({ overview }: InvestmentInsightsProps) {
           </div>
         </div>
 
-        {/* Investment Ratio */}
-        <div className="bg-green-900/20 rounded-lg p-4 border border-green-800/30">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-green-400 font-medium">Investment Ratio</span>
-            <span className="text-xl font-bold text-green-400">
+        {/* Investment Ratio Card - DESIGN SYSTEM */}
+        <div className="card-success p-4">
+          <div className="flex justify-between items-start element-gap">
+            <span className="label-primary">Investment Ratio</span>
+            <span className="metric-medium text-success">
               {formatPercentage(investmentRatio)}
             </span>
           </div>
-          <div className="text-xs text-gray-300">
+          
+          <div className="text-xs text-secondary tight-gap">
             {formatCurrency(totalInvested)} invested of {formatCurrency(totalNetWorth)} total net worth
           </div>
-          <div className="text-xs text-green-300 mt-1">
+          
+          <div className="text-xs text-success">
             Shows how much of your wealth is in investments vs liquid cash
           </div>
         </div>

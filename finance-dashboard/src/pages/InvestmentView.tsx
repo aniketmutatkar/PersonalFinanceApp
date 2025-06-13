@@ -13,6 +13,7 @@ import InvestmentTrends from '../components/investments/InvestmentTrends';
 import AccountComparison from '../components/investments/AccountComparison';
 import InvestmentPatterns from '../components/investments/InvestmentPatterns';
 import PortfolioValueChart from '../components/portfolio/PortfolioValueChart';
+import PageHeader from '../components/layout/PageHeader';
 
 export default function InvestmentView() {
   const [selectedPeriod, setSelectedPeriod] = useState("all");
@@ -53,14 +54,10 @@ export default function InvestmentView() {
     <div className="space-y-8">
       {/* Clean Page Header - Analytics Focus */}
       <div className="border-b border-gray-700 pb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Portfolio Analytics</h1>
-            <p className="text-gray-400 mt-2">
-              Real portfolio performance, account allocation, and growth tracking across all platforms.
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          title="Portfolio Analytics"
+          subtitle="Real portfolio performance, account allocation, and growth tracking across all platforms"
+        />
         
         {/* Portfolio Summary Bar */}
         {portfolioOverview && !portfolioLoading && (

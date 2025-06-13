@@ -1,4 +1,4 @@
-// src/components/ui/LoadingSkeleton.tsx
+// src/components/ui/LoadingSkeleton.tsx - PHASE 1 CONVERSION
 import React from 'react';
 
 interface LoadingSkeletonProps {
@@ -14,25 +14,26 @@ export default function LoadingSkeleton({
   rows = 5, // Default rows for table
   className = '' 
 }: LoadingSkeletonProps) {
+  
   const renderMetricSkeleton = () => (
-    <div className={`bg-gray-800 border border-gray-600 rounded-lg p-8 ${className}`}>
+    <div className={`card-standard ${className}`}>
       <div className="animate-pulse">
-        <div className="h-12 bg-gray-700 rounded mb-4"></div>
-        <div className="h-6 bg-gray-700 rounded w-3/4 mb-2"></div>
-        <div className="h-4 bg-gray-700 rounded w-1/2"></div>
+        <div className="loading-metric element-gap"></div>
+        <div className="loading-text w-3/4 tight-gap"></div>
+        <div className="loading-text w-1/2"></div>
       </div>
     </div>
   );
 
   const renderListSkeleton = () => (
-    <div className={`bg-gray-800 border border-gray-600 rounded-lg p-8 ${className}`}>
+    <div className={`card-standard ${className}`}>
       <div className="animate-pulse">
-        <div className="h-6 bg-gray-700 rounded mb-6 w-1/3"></div>
+        <div className="loading-title content-gap w-1/3"></div>
         <div className="space-y-4">
           {Array.from({ length: lines }, (_, i) => (
             <div key={i} className="flex justify-between items-center">
-              <div className="h-4 bg-gray-700 rounded w-1/4"></div>
-              <div className="h-4 bg-gray-700 rounded w-1/6"></div>
+              <div className="loading-text w-1/4"></div>
+              <div className="loading-text w-1/6"></div>
             </div>
           ))}
         </div>
@@ -41,34 +42,34 @@ export default function LoadingSkeleton({
   );
 
   const renderChartSkeleton = () => (
-    <div className={`bg-gray-800 border border-gray-600 rounded-lg p-8 ${className}`}>
+    <div className={`card-standard ${className}`}>
       <div className="animate-pulse">
-        <div className="h-6 bg-gray-700 rounded mb-6 w-1/3"></div>
-        <div className="h-64 bg-gray-700 rounded"></div>
+        <div className="loading-title content-gap w-1/3"></div>
+        <div className="h-64 loading-skeleton rounded"></div>
       </div>
     </div>
   );
 
   const renderTableSkeleton = () => (
     <div className={`animate-pulse ${className}`}>
-      {/* Table Header */}
-      <div className="flex gap-4 mb-4 p-4 border-b border-gray-700">
-        <div className="h-4 bg-gray-700 rounded w-20"></div>
-        <div className="h-4 bg-gray-700 rounded w-40"></div>
-        <div className="h-4 bg-gray-700 rounded w-24"></div>
-        <div className="h-4 bg-gray-700 rounded w-20"></div>
-        <div className="h-4 bg-gray-700 rounded w-16"></div>
+      {/* Table Header - DESIGN SYSTEM */}
+      <div className="flex grid-tight element-gap p-4 border-b border-gray-700">
+        <div className="loading-text w-20"></div>
+        <div className="loading-text w-40"></div>
+        <div className="loading-text w-24"></div>
+        <div className="loading-text w-20"></div>
+        <div className="loading-text w-16"></div>
       </div>
       
-      {/* Table Rows */}
+      {/* Table Rows - DESIGN SYSTEM */}
       <div className="space-y-3 p-4">
         {Array.from({ length: rows }, (_, i) => (
-          <div key={i} className="flex gap-4 items-center">
-            <div className="h-6 bg-gray-700 rounded w-20"></div>
-            <div className="h-6 bg-gray-700 rounded w-40"></div>
-            <div className="h-6 bg-gray-700 rounded w-24"></div>
-            <div className="h-6 bg-gray-700 rounded w-20"></div>
-            <div className="h-6 bg-gray-700 rounded w-16"></div>
+          <div key={i} className="flex grid-tight items-center">
+            <div className="loading-text w-20"></div>
+            <div className="loading-text w-40"></div>
+            <div className="loading-text w-24"></div>
+            <div className="loading-text w-20"></div>
+            <div className="loading-text w-16"></div>
           </div>
         ))}
       </div>
@@ -81,8 +82,8 @@ export default function LoadingSkeleton({
         {Array.from({ length: lines }, (_, i) => (
           <div 
             key={i} 
-            className={`h-4 bg-gray-700 rounded ${
-              i === lines - 1 ? 'w-3/4' : 'w-full'
+            className={`loading-text ${
+              i === lines - 1 ? 'w-2/3' : 'w-full'
             }`}
           ></div>
         ))}
@@ -90,6 +91,7 @@ export default function LoadingSkeleton({
     </div>
   );
 
+  // Render based on variant - DESIGN SYSTEM APPROACH
   switch (variant) {
     case 'metric':
       return renderMetricSkeleton();

@@ -6,6 +6,7 @@ import YearTrendsChart from '../components/analytics/YearTrendsChart';
 import CategoryHeatmap from '../components/analytics/CategoryHeatmap';
 import YearComparisonPanel from '../components/analytics/YearComparisonPanel';
 import LoadingSkeleton from '../components/ui/LoadingSkeleton';
+import PageHeader from '../components/layout/PageHeader';
 
 export default function YearAnalysisPage() {
   const { 
@@ -118,20 +119,17 @@ export default function YearAnalysisPage() {
   return (
     <div className="h-full flex flex-col">
       {/* Page Header */}
-      <div className="mb-8 flex justify-between items-end">
-        <div>
-          <h1 className="text-4xl font-bold text-white mb-3">Year Analysis</h1>
-          <p className="text-xl text-gray-400">
-            Complete financial trajectory and category evolution insights
-          </p>
-        </div>
-        
-        <YearSelector
-          availableYears={availableYears}
-          selectedYears={selectedYears}
-          onChange={setSelectedYears}
-        />
-      </div>
+      <PageHeader
+        title="Year Analysis"
+        subtitle="Complete financial trajectory and category evolution insights"
+        actions={
+          <YearSelector
+            availableYears={availableYears}
+            selectedYears={selectedYears}
+            onChange={setSelectedYears}
+          />
+        }
+      />
 
       {/* Summary Statistics Row */}
       {summaryStats && (

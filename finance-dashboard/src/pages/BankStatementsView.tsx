@@ -1,6 +1,7 @@
 // finance-dashboard/src/pages/BankStatementsView.tsx (Simplified)
 import React, { useState, useEffect } from 'react';
-import { Building2, TrendingUp, TrendingDown, Calendar, DollarSign, AlertCircle, Upload, Plus } from 'lucide-react';
+import {TrendingUp, TrendingDown, Calendar, DollarSign, AlertCircle } from 'lucide-react';
+import PageHeader from '../components/layout/PageHeader';
 
 interface BankBalance {
   id: number;
@@ -121,12 +122,10 @@ export default function BankStatementsView() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Bank Statements</h1>
-          <p className="text-gray-400 mt-2">Track your Wells Fargo account balances and cash flow</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Bank Statements"
+        subtitle="Track your Wells Fargo account balances and cash flow"
+      />
 
       {/* Simple Metrics - Same style as transaction page */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
