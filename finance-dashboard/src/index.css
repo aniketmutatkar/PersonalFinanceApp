@@ -348,4 +348,55 @@
   .slide-up {
     @apply animate-in slide-in-from-bottom-4 duration-200;
   }
+
+  /* ===== STANDARDIZED GRID SYSTEM ===== */
+
+  /* Metric Grid Options - Semantic naming */
+  .grid-metrics-3 {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6;
+  }
+
+  .grid-metrics-4 {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6;
+  }
+
+  .grid-metrics-5 {
+    @apply grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6;
+  }
+
+  /* Layout Grid - For charts, tables, content sections */
+  .grid-layout-12 {
+    @apply grid grid-cols-12 gap-6;
+  }
+
+  /* Column Spans */
+  .col-3 {
+    @apply col-span-3;
+  }
+
+  .col-6 {
+    @apply col-span-6;
+  }
+
+  .col-8 {
+    @apply col-span-8;
+  }
+
+  .col-4 {
+    @apply col-span-4;
+  }
+
+  .col-9 {
+    @apply col-span-9;
+  }
+
+  .col-12 {
+    @apply col-span-12;
+  }
+
+  /* Page Wrapper */
+  .page-content {
+    @apply space-y-8;
+  }
+
 }

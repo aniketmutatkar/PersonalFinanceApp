@@ -1,4 +1,4 @@
-// src/components/cards/MetricCard.tsx - PHASE 2 ENHANCEMENT
+// src/components/cards/MetricCard.tsx - ENHANCED VERSION - Better Typography & Layout
 import React from 'react';
 
 interface StatItem {
@@ -59,19 +59,9 @@ export default function MetricCard({
   const getMetricClass = () => {
     switch (variant) {
       case 'hero':
-        return 'metric-hero';
-      case 'success':
-        return 'metric-large text-success';
-      case 'danger':
-        return 'metric-large text-danger';
-      case 'warning':
-        return 'metric-large text-warning';
-      case 'info':
-        return 'metric-large text-info';
-      case 'accent':
-        return 'metric-large text-accent';
+        return 'text-4xl font-bold text-white leading-tight';
       default:
-        return 'metric-large';
+        return 'text-3xl font-bold text-white leading-tight';
     }
   };
 
@@ -81,9 +71,9 @@ export default function MetricCard({
       trend.isPositive : 
       trend.direction === 'up';
     
-    if (isPositive) return 'text-success';
-    if (trend.direction === 'down') return 'text-danger';
-    return 'text-muted';
+    if (isPositive) return 'text-green-400';
+    if (trend.direction === 'down') return 'text-red-400';
+    return 'text-gray-400';
   };
 
   const getTrendIcon = () => {
@@ -98,71 +88,71 @@ export default function MetricCard({
   const getIndicatorClass = () => {
     if (!indicator) return '';
     switch (indicator) {
-      case 'success': return 'bg-success';
-      case 'warning': return 'bg-warning';
-      case 'danger': return 'bg-danger';
-      case 'info': return 'bg-info';
+      case 'success': return 'bg-green-500';
+      case 'warning': return 'bg-yellow-500';
+      case 'danger': return 'bg-red-500';
+      case 'info': return 'bg-blue-500';
       default: return 'bg-gray-500';
     }
   };
 
   return (
-    <div className={`${getCardClass()} ${className} flex flex-col`}>
-      {/* Top Section: Status Indicator + Title - DESIGN SYSTEM */}
-      <div className="flex-shrink-0">
-        {indicator && (
-          <div className="flex items-center justify-end tight-gap">
-            <div className={`w-2 h-2 rounded-full ${getIndicatorClass()}`}></div>
-          </div>
-        )}
-
-        <div className="label-primary tight-gap">
-          {title}
+    <div className={`${getCardClass()} ${className} flex flex-col p-6`}>
+      {/* Top Section: Status Indicator + Title */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex-1">
+          <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-1">
+            {title}
+          </h3>
         </div>
+        {indicator && (
+          <div className={`w-3 h-3 rounded-full ${getIndicatorClass()}`}></div>
+        )}
       </div>
 
-      {/* Middle Section: Main Value - DESIGN SYSTEM */}
-      <div className="flex-1 flex flex-col justify-center">
-        <div className={`${getMetricClass()}`}>
+      {/* Main Value Section - Enhanced Typography */}
+      <div className="flex-1 flex flex-col justify-center mb-4">
+        <div className={`${getMetricClass()} mb-2`}>
           {typeof value === 'number' ? value.toLocaleString() : value}
         </div>
 
+        {/* Subtitle with better spacing */}
+        {subtitle && (
+          <p className="text-gray-300 text-sm leading-relaxed">
+            {subtitle}
+          </p>
+        )}
+
         {/* Mini Chart */}
         {chart && (
-          <div className="mt-2 h-8">
+          <div className="mt-3 h-8">
             {chart}
           </div>
         )}
       </div>
 
-      {/* Bottom Section: Subtitle + Trend - DESIGN SYSTEM */}
-      <div className="flex-shrink-0 space-y-2">
-        {subtitle && (
-          <div className="text-secondary text-sm">
-            {subtitle}
-          </div>
-        )}
-
-        {trend && (
-          <div className={`flex items-center text-sm ${getTrendClass()}`}>
-            <span className="mr-1">{getTrendIcon()}</span>
+      {/* Trend Section - Enhanced Design */}
+      {trend && (
+        <div className="flex items-center mt-auto pt-3 border-t border-gray-700/50">
+          <div className={`flex items-center text-sm font-medium ${getTrendClass()}`}>
+            <span className="mr-2 text-base">{getTrendIcon()}</span>
             <span>{trend.value}</span>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Stats Breakdown (for hero cards) - DESIGN SYSTEM */}
+      {/* Stats Breakdown (for hero cards) */}
       {stats && stats.length > 0 && (
-        <div className="mt-4 p-3 bg-black/20 rounded-lg grid grid-cols-2 lg:grid-cols-4 grid-tight flex-shrink-0">
+        <div className="mt-4 p-4 bg-black/20 rounded-lg grid grid-cols-2 lg:grid-cols-4 gap-3">
           {stats.map((stat, index) => (
             <div key={index} className="text-center">
-              <div className="label-secondary tight-gap">
+              <div className="text-xs text-gray-400 mb-1">
                 {stat.label}
               </div>
               <div className={`text-sm font-bold ${
-                stat.variant === 'positive' ? 'text-success' :
-                stat.variant === 'negative' ? 'text-danger' : 
-                'text-primary'
+                stat.variant === 'positive' ? 'text-green-400' :
+                stat.variant === 'negative' ? 'text-red-400' : 
+                'text-white'
               }`}>
                 {stat.value}
               </div>

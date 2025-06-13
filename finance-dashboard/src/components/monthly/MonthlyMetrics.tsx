@@ -1,4 +1,4 @@
-// src/components/monthly/MonthlyMetrics.tsx - Improved Version
+// src/components/monthly/MonthlyMetrics.tsx - FIXED: No internal grid, returns individual cards
 import React from 'react';
 import MetricCard from '../cards/MetricCard';
 import { MonthlySummary } from '../../types/api';
@@ -69,9 +69,10 @@ export default function MonthlyMetrics({ summary, previousSummary }: MonthlyMetr
   
   const prevMonthName = previousSummary ? getPreviousMonthName(summary.month_year) : 'Previous';
 
+  // FIXED: Return individual cards, let parent handle grid layout
   return (
-    <div className="grid grid-cols-4 gap-6">
-      {/* Hero Metric - Net Financial Position with cleaner design */}
+    <>
+      {/* Hero Metric - Net Financial Position */}
       <MetricCard
         title="Net"
         value={formatCurrency(netSavings)}
@@ -124,6 +125,6 @@ export default function MonthlyMetrics({ summary, previousSummary }: MonthlyMetr
           isPositive: burnRate <= 150
         }}
       />
-    </div>
+    </>
   );
 }

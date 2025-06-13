@@ -1,7 +1,7 @@
-// src/components/transactions/TransactionStats.tsx
+// src/components/transactions/TransactionStats.tsx - PHASE 4.3 CONVERSION - Clean MetricCards
 import React from 'react';
-import { CreditCard, Search, Tag, Calendar } from 'lucide-react';
 import { Transaction } from '../../types/api';
+import MetricCard from '../cards/MetricCard';
 
 interface TransactionStatsProps {
   totalTransactions: number;
@@ -41,55 +41,36 @@ export default function TransactionStats({
   const startIndex = (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalTransactions);
 
+  // CONVERTED: Individual MetricCard components using design system
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-      <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-600 rounded-lg">
-            <CreditCard className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-400">Total Results</p>
-            <p className="text-xl font-bold text-white">{(totalTransactions || 0).toLocaleString()}</p>
-          </div>
-        </div>
-      </div>
+    <>
+      <MetricCard
+        title="Total Results"
+        value={safeNumber(totalTransactions).toLocaleString()}
+        subtitle="Transactions found"
+        variant="default"
+      />
 
-      <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-green-600 rounded-lg">
-            <Search className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-400">Showing</p>
-            <p className="text-xl font-bold text-white">{startIndex}-{endIndex}</p>
-          </div>
-        </div>
-      </div>
+      <MetricCard
+        title="Showing"
+        value={`${startIndex}-${endIndex}`}
+        subtitle="Current page results"
+        variant="default"
+      />
 
-      <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-purple-600 rounded-lg">
-            <Tag className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-400">Total Amount</p>
-            <p className="text-xl font-bold text-white">{formatCurrency(totalSum)}</p>
-          </div>
-        </div>
-      </div>
+      <MetricCard
+        title="Total Amount"
+        value={formatCurrency(safeNumber(totalSum))}
+        subtitle="Sum of all transactions"
+        variant="default"
+      />
 
-      <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-orange-600 rounded-lg">
-            <Calendar className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-400">Average</p>
-            <p className="text-xl font-bold text-white">{formatCurrency(avgAmount)}</p>
-          </div>
-        </div>
-      </div>
-    </div>
+      <MetricCard
+        title="Average"
+        value={formatCurrency(safeNumber(avgAmount))}
+        subtitle="Per transaction average"
+        variant="default"
+      />
+    </>
   );
 }

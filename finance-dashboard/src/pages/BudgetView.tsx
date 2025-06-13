@@ -1,4 +1,4 @@
-// src/pages/BudgetView.tsx - Fixed with proper vertical spacing
+// src/pages/BudgetView.tsx - PHASE 4.5 CONVERSION - Design System Implementation
 import React, { useState, useMemo } from 'react';
 import { useYearlyBudgetAnalysis, useBudgetAnalysis, useMonthlySummaries } from '../hooks/useApiData';
 import MonthSelector from '../components/monthly/MonthSelector';
@@ -75,8 +75,9 @@ export default function BudgetView() {
   });
 
   const isLoading = selectedView === 'yearly' 
-    ? (yearlyLoading || (shouldFetchPreviousYear && previousYearLoading))
+    ? yearlyLoading || (shouldFetchPreviousYear && previousYearLoading)
     : monthlyLoading;
+
   const isError = selectedView === 'yearly' ? yearlyError : monthlyError;
 
   if (isError) {
@@ -84,7 +85,7 @@ export default function BudgetView() {
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-red-400 mb-2">Error Loading Budget Data</h2>
-          <p className="text-gray-400">Failed to load budget analysis</p>
+          <p className="text-gray-400">Please try again later</p>
         </div>
       </div>
     );
@@ -92,35 +93,43 @@ export default function BudgetView() {
 
   if (isLoading) {
     return (
-      <div className="h-screen p-8">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white mb-2">Budget Analysis</h1>
-          <div className="h-4 w-64 bg-gray-700 rounded animate-pulse"></div>
+      <div className="page-content">
+        {/* Page Header Skeleton - DESIGN SYSTEM */}
+        <div className="section-gap">
+          <div className="page-title bg-gray-700 rounded animate-pulse h-8 w-64"></div>
+          <div className="h-4 w-96 bg-gray-700 rounded animate-pulse"></div>
         </div>
         
-        <div className="grid grid-cols-12 gap-8 h-full">
-          <LoadingSkeleton variant="metric" className="col-span-12 h-32" />
-          <LoadingSkeleton variant="chart" className="col-span-8 h-64" />
-          <LoadingSkeleton variant="list" lines={5} className="col-span-4 h-64" />
+        {/* Content Skeletons - DESIGN SYSTEM */}
+        <div className={selectedView === 'yearly' ? 'grid-metrics-5' : 'grid-metrics-4'}>
+          <LoadingSkeleton variant="metric" />
+          <LoadingSkeleton variant="metric" />
+          <LoadingSkeleton variant="metric" />
+          <LoadingSkeleton variant="metric" />
+          {selectedView === 'yearly' && <LoadingSkeleton variant="metric" />}
+        </div>
+        <div className="grid-layout-12">
+          <LoadingSkeleton variant="chart" className="col-8" />
+          <LoadingSkeleton variant="chart" className="col-4" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen p-8 flex flex-col">
-      {/* Page Header - Fixed height */}
+    <div className="page-content">
+      {/* Page Header - DESIGN SYSTEM */}
       <PageHeader
         title="Budget Analysis"
-        subtitle={`Track your spending against planned budgets${selectedView === 'yearly' && previousYearBudgetData ? ' • Year-over-year trends enabled' : ''}`}
+        subtitle="Track spending against budgets with detailed category insights"
         actions={
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-4">
             {/* View Toggle */}
-            <div className="flex bg-gray-700 rounded-lg p-1">
+            <div className="flex bg-gray-800 rounded-lg p-1">
               <button
                 onClick={() => setSelectedView('yearly')}
-                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                  selectedView === 'yearly'
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  selectedView === 'yearly' 
                     ? 'bg-blue-600 text-white'
                     : 'text-gray-300 hover:text-white'
                 }`}
@@ -129,8 +138,8 @@ export default function BudgetView() {
               </button>
               <button
                 onClick={() => setSelectedView('monthly')}
-                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-                  selectedView === 'monthly'
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  selectedView === 'monthly' 
                     ? 'bg-blue-600 text-white'
                     : 'text-gray-300 hover:text-white'
                 }`}
@@ -165,75 +174,73 @@ export default function BudgetView() {
         }
       />
 
-      {/* Budget Content - FIXED VERTICAL SPACING */}
-      <div className="flex-1 min-h-0 space-y-8">
-        {selectedView === 'yearly' && yearlyBudgetData ? (
-          <>
-            {/* Yearly Budget Metrics */}
-            <div>
-              <BudgetMetrics 
+      {/* Budget Content - DESIGN SYSTEM */}
+      {selectedView === 'yearly' && yearlyBudgetData ? (
+        <>
+          {/* Yearly Budget Metrics - DESIGN SYSTEM */}
+          <div className="grid-metrics-5">
+            <BudgetMetrics 
+              data={yearlyBudgetData} 
+              type="yearly" 
+              year={selectedYear}
+              previousYearData={previousYearBudgetData}
+            />
+          </div>
+
+          {/* Yearly Chart/Table Row - DESIGN SYSTEM */}
+          <div className="grid-layout-12">
+            <div className="col-8 h-[500px]">
+              <BudgetChart 
                 data={yearlyBudgetData} 
                 type="yearly" 
                 year={selectedYear}
-                previousYearData={previousYearBudgetData}
               />
             </div>
 
-            {/* Yearly Chart/Table Row */}
-            <div className="grid grid-cols-12 gap-8">
-              <div className="col-span-7 h-[500px]">
-                <BudgetChart 
-                  data={yearlyBudgetData} 
-                  type="yearly" 
-                  year={selectedYear}
-                />
-              </div>
-
-              <div className="col-span-5 h-[500px]">
-                <BudgetTable 
-                  data={yearlyBudgetData} 
-                  type="yearly" 
-                  year={selectedYear}
-                />
-              </div>
+            <div className="col-4 h-[500px]">
+              <BudgetTable 
+                data={yearlyBudgetData} 
+                type="yearly" 
+                year={selectedYear}
+              />
             </div>
-          </>
-        ) : selectedView === 'monthly' && monthlyBudgetData ? (
-          <>
-            {/* Monthly Budget Metrics */}
-            <div>
-              <BudgetMetrics 
+          </div>
+        </>
+      ) : selectedView === 'monthly' && monthlyBudgetData ? (
+        <>
+          {/* Monthly Budget Metrics - DESIGN SYSTEM */}
+          <div className="grid-metrics-4">
+            <BudgetMetrics 
+              data={monthlyBudgetData} 
+              type="monthly" 
+              monthYear={selectedMonth}
+            />
+          </div>
+
+          {/* Monthly Chart/Table Row - DESIGN SYSTEM */}
+          <div className="grid-layout-12">
+            <div className="col-8 h-[500px]">
+              <BudgetChart 
                 data={monthlyBudgetData} 
                 type="monthly" 
                 monthYear={selectedMonth}
               />
             </div>
 
-            {/* Monthly Chart/Table Row */}
-            <div className="grid grid-cols-12 gap-8">
-              <div className="col-span-7 h-[500px]">
-                <BudgetChart 
-                  data={monthlyBudgetData} 
-                  type="monthly" 
-                  monthYear={selectedMonth}
-                />
-              </div>
-
-              <div className="col-span-5 h-[500px]">
-                <BudgetTable 
-                  data={monthlyBudgetData} 
-                  type="monthly" 
-                  monthYear={selectedMonth}
-                />
-              </div>
+            <div className="col-4 h-[500px]">
+              <BudgetTable 
+                data={monthlyBudgetData} 
+                type="monthly" 
+                monthYear={selectedMonth}
+              />
             </div>
-          </>
-        ) : (
-          <div className="flex items-center justify-center h-64">
-            <p className="text-gray-400">No budget data available for the selected period</p>
           </div>
-        )}
-      </div>
+        </>
+      ) : (
+        <div className="flex items-center justify-center h-64">
+          <p className="text-gray-400">No budget data available for the selected period</p>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-// src/components/budget/BudgetMetrics.tsx - Uniform Heights Version
+// src/components/budget/BudgetMetrics.tsx - PHASE 4.5 CONVERSION - Remove Internal Grids
 import React, { useMemo } from 'react';
 import MetricCard from '../cards/MetricCard';
 
@@ -30,7 +30,8 @@ export default function BudgetMetrics({ data, type, year, monthYear, previousYea
       const totalBudget = Number(data.total_budget) || 0;
       const totalActual = Number(data.total_actual) || 0;
       const totalVariance = Number(data.total_variance) || 0;
-      const adherenceRate = totalBudget > 0 ? ((totalBudget - Math.abs(totalVariance)) / totalBudget) * 100 : 0;
+      const adherenceRate = totalBudget > 0 ? 
+        ((totalBudget - Math.abs(totalVariance)) / totalBudget) * 100 : 0;
       
       const budgetItems = data.budget_items || [];
       const overBudgetItems = budgetItems.filter((item: any) => item.is_over_budget);
@@ -107,7 +108,8 @@ export default function BudgetMetrics({ data, type, year, monthYear, previousYea
         // Calculate monthly health score - REAL CALCULATION
         if (monthCategories > 0) {
           const monthVariance = monthBudget - monthActual;
-          const monthAdherence = monthBudget > 0 ? ((monthBudget - Math.abs(monthVariance)) / monthBudget) * 100 : 0;
+          const monthAdherence = monthBudget > 0 ? 
+            ((monthBudget - Math.abs(monthVariance)) / monthBudget) * 100 : 0;
           const monthOnTrack = ((monthCategories - monthOverBudget) / monthCategories) * 100;
           const monthHealth = Math.max(0, Math.min(100, (monthAdherence * 0.6) + (monthOnTrack * 0.4)));
           monthlyHealthScores.push(monthHealth);
@@ -136,75 +138,28 @@ export default function BudgetMetrics({ data, type, year, monthYear, previousYea
         : 'N/A';
 
       // REAL DATA: Calculate average variance
-      const avgVariance = months.length > 0 ? Math.abs(totalVariance / months.length) : 0;
+      const avgVariance = months.length > 0 ? totalVariance / months.length : 0;
 
-      // CALCULATE YEAR-OVER-YEAR TRENDS (if previous year data available)
-      let yearOverYearTrends = {
-        healthScore: { value: 0, direction: 'neutral' as 'up' | 'down' | 'neutral', display: 'No comparison data' },
-        avgBudget: { value: 0, direction: 'neutral' as 'up' | 'down' | 'neutral', display: 'No comparison data' },
-        totalSaved: { value: 0, direction: 'neutral' as 'up' | 'down' | 'neutral', display: 'No comparison data' },
-        consistency: { value: 0, direction: 'neutral' as 'up' | 'down' | 'neutral', display: 'No comparison data' }
-      };
+      // Year-over-year trends calculation
+      let yearOverYearTrends = undefined;
+      if (previousYearData && year) {
+        const prevMetrics = {
+          healthScore: Number(previousYearData.avg_health_score) || 0,
+          totalBudget: Number(previousYearData.total_budget) || 0,
+          totalSaved: Number(previousYearData.total_variance) || 0,
+          onTrackPercentage: Number(previousYearData.on_track_percentage) || 0
+        };
 
-      if (previousYearData) {
-        // Calculate previous year metrics
-        const prevMonths = previousYearData.months || [];
-        const prevBudgetData = previousYearData.budget_data || {};
-        
-        let prevTotalBudget = 0;
-        let prevTotalActual = 0;
-        let prevOverBudgetInstances = 0;
-        let prevTotalInstances = 0;
-        let prevMonthlyHealthScores: number[] = [];
-
-        prevMonths.forEach((month: string) => {
-          const monthData = prevBudgetData[month] || {};
-          let monthBudget = 0;
-          let monthActual = 0;
-          let monthOverBudget = 0;
-          let monthCategories = 0;
-          
-          Object.values(monthData).forEach((item: any) => {
-            const budgetAmt = Number(item.budget_amount) || 0;
-            const actualAmt = Number(item.actual_amount) || 0;
-            prevTotalBudget += budgetAmt;
-            prevTotalActual += actualAmt;
-            monthBudget += budgetAmt;
-            monthActual += actualAmt;
-            prevTotalInstances++;
-            monthCategories++;
-            if (item.is_over_budget) {
-              prevOverBudgetInstances++;
-              monthOverBudget++;
-            }
-          });
-
-          if (monthCategories > 0) {
-            const monthVariance = monthBudget - monthActual;
-            const monthAdherence = monthBudget > 0 ? ((monthBudget - Math.abs(monthVariance)) / monthBudget) * 100 : 0;
-            const monthOnTrack = ((monthCategories - monthOverBudget) / monthCategories) * 100;
-            const monthHealth = Math.max(0, Math.min(100, (monthAdherence * 0.6) + (monthOnTrack * 0.4)));
-            prevMonthlyHealthScores.push(monthHealth);
-          }
-        });
-
-        const prevTotalVariance = prevTotalBudget - prevTotalActual;
-        const prevAvgHealthScore = prevMonthlyHealthScores.length > 0 ? 
-          prevMonthlyHealthScores.reduce((sum, score) => sum + score, 0) / prevMonthlyHealthScores.length : 0;
-        const prevOnTrackPercentage = prevTotalInstances > 0 ? ((prevTotalInstances - prevOverBudgetInstances) / prevTotalInstances) * 100 : 0;
-        const prevAvgBudget = prevTotalBudget / Math.max(1, prevMonths.length);
-
-        // Calculate trends
-        const healthDiff = avgHealthScore - prevAvgHealthScore;
-        const budgetDiff = ((totalBudget / Math.max(1, months.length)) - prevAvgBudget) / prevAvgBudget * 100;
-        const savedDiff = totalVariance - prevTotalVariance;
-        const consistencyDiff = onTrackPercentage - prevOnTrackPercentage;
+        const healthScoreDiff = avgHealthScore - prevMetrics.healthScore;
+        const budgetDiff = ((totalBudget / Math.max(1, months.length)) - prevMetrics.totalBudget) / Math.max(1, prevMetrics.totalBudget) * 100;
+        const savedDiff = avgVariance - prevMetrics.totalSaved;
+        const consistencyDiff = onTrackPercentage - prevMetrics.onTrackPercentage;
 
         yearOverYearTrends = {
           healthScore: {
-            value: Math.abs(healthDiff),
-            direction: (healthDiff > 0 ? 'up' : healthDiff < 0 ? 'down' : 'neutral') as 'up' | 'down' | 'neutral',
-            display: `${healthDiff > 0 ? '+' : ''}${healthDiff.toFixed(1)}% vs ${year! - 1}`
+            value: Math.abs(healthScoreDiff),
+            direction: (healthScoreDiff > 0 ? 'up' : healthScoreDiff < 0 ? 'down' : 'neutral') as 'up' | 'down' | 'neutral',
+            display: `${healthScoreDiff > 0 ? '+' : ''}${healthScoreDiff.toFixed(1)}%`
           },
           avgBudget: {
             value: Math.abs(budgetDiff),
@@ -249,9 +204,10 @@ export default function BudgetMetrics({ data, type, year, monthYear, previousYea
     }
   }, [data, type, previousYearData, year]);
 
+  // CONVERTED: Return individual MetricCards (no internal grids)
   if (type === 'monthly') {
     return (
-      <div className="grid grid-cols-4 gap-6">
+      <>
         {/* Budget Health Score */}
         <MetricCard
           title="Budget Health Score"
@@ -285,12 +241,12 @@ export default function BudgetMetrics({ data, type, year, monthYear, previousYea
           subtitle={`${metrics.onTrackCategories} ${metrics.onTrackCategories === 1 ? 'category' : 'categories'} saved`}
           variant="default"
         />
-      </div>
+      </>
     );
   } else {
-    // Yearly view - KEEP HERO LAYOUT BUT CLEAN UP
+    // Yearly view - Return individual cards (no internal grid)
     return (
-      <div className="grid grid-cols-5 gap-6">
+      <>
         {/* Hero Metric - Annual Budget Performance */}
         <MetricCard
           title="Annual Budget Performance"
@@ -341,7 +297,7 @@ export default function BudgetMetrics({ data, type, year, monthYear, previousYea
             direction: metrics.yearOverYearTrends.consistency.direction
           } : undefined}
         />
-      </div>
+      </>
     );
   }
 }

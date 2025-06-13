@@ -1,7 +1,8 @@
-// finance-dashboard/src/pages/BankStatementsView.tsx (Simplified)
+// src/pages/BankStatementsView.tsx - PHASE 4.7 CONVERSION - Design System Implementation
 import React, { useState, useEffect } from 'react';
-import {TrendingUp, TrendingDown, Calendar, DollarSign, AlertCircle } from 'lucide-react';
 import PageHeader from '../components/layout/PageHeader';
+import MetricCard from '../components/cards/MetricCard';
+import LoadingSkeleton from '../components/ui/LoadingSkeleton';
 
 interface BankBalance {
   id: number;
@@ -16,6 +17,15 @@ interface BankBalance {
   data_source: string;
   confidence_score: number;
   created_at?: string;
+}
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
 }
 
 const getApiBaseUrl = () => {
@@ -57,11 +67,11 @@ export default function BankStatementsView() {
     }
   };
 
-  // Calculate simple metrics
+  // Calculate metrics
   const latestBalance = bankBalances.length > 0 
     ? bankBalances.reduce((latest, current) => 
         new Date(current.statement_date) > new Date(latest.statement_date) ? current : latest
-      )
+    )
     : null;
 
   const totalStatements = bankBalances.length;
@@ -78,106 +88,97 @@ export default function BankStatementsView() {
     ? recentBalances[0].ending_balance - recentBalances[recentBalances.length - 1].ending_balance
     : 0;
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
-        <span className="ml-3 text-gray-400">Loading bank statements...</span>
-      </div>
-    );
-  }
-
   if (error) {
     return (
-      <div className="bg-red-900/20 border border-red-600 rounded-lg p-6">
-        <div className="flex items-center gap-2">
-          <AlertCircle className="w-5 h-5 text-red-400" />
-          <h3 className="text-lg font-semibold text-red-400">Error Loading Bank Statements</h3>
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-red-400 mb-2">Error Loading Bank Statements</h2>
+          <p className="text-gray-400">{error}</p>
         </div>
-        <p className="text-red-300 mt-2">{error}</p>
-        <button 
-          onClick={fetchBankBalances}
-          className="mt-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
-        >
-          Retry
-        </button>
       </div>
     );
   }
 
-  if (bankBalances.length === 0) {
+  if (isLoading) {
     return (
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Bank Statements</h1>
-            <p className="text-gray-400 mt-2">Track your Wells Fargo account balances and cash flow</p>
-          </div>
+      <div className="page-content">
+        {/* Page Header Skeleton - DESIGN SYSTEM */}
+        <div className="section-gap">
+          <div className="page-title bg-gray-700 rounded animate-pulse h-8 w-64"></div>
+          <div className="h-4 w-96 bg-gray-700 rounded animate-pulse"></div>
         </div>
+        
+        {/* Content Skeletons - DESIGN SYSTEM */}
+        <div className="grid-metrics-4">
+          <LoadingSkeleton variant="metric" />
+          <LoadingSkeleton variant="metric" />
+          <LoadingSkeleton variant="metric" />
+          <LoadingSkeleton variant="metric" />
+        </div>
+        <LoadingSkeleton variant="table" rows={8} />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="page-content">
+      {/* Page Header - DESIGN SYSTEM */}
       <PageHeader
         title="Bank Statements"
-        subtitle="Track your Wells Fargo account balances and cash flow"
+        subtitle="Monthly account balances and statement analysis"
+        actions={
+          <button
+            onClick={fetchBankBalances}
+            className="btn-secondary btn-sm"
+          >
+            Refresh Data
+          </button>
+        }
       />
 
-      {/* Simple Metrics - Same style as transaction page */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-white" />
-            </div>
-            <h3 className="text-sm font-medium text-gray-400">Current Balance</h3>
-          </div>
-          <p className="text-2xl font-bold text-white">
-            ${latestBalance?.ending_balance.toLocaleString() || '0'}
-          </p>
-        </div>
+      {/* Bank Statement Metrics - DESIGN SYSTEM */}
+      <div className="grid-metrics-4">
+        <MetricCard
+          title="Latest Balance"
+          value={latestBalance ? formatCurrency(latestBalance.ending_balance) : '$0'}
+          subtitle={latestBalance ? `${latestBalance.account_name} • ${latestBalance.statement_month}` : 'No data'}
+          variant="hero"
+        />
 
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center">
-              <Calendar className="w-5 h-5 text-white" />
-            </div>
-            <h3 className="text-sm font-medium text-gray-400">Total Statements</h3>
-          </div>
-          <p className="text-2xl font-bold text-white">{totalStatements}</p>
-        </div>
+        <MetricCard
+          title="Total Statements"
+          value={totalStatements}
+          subtitle="Monthly statements tracked"
+          variant="info"
+        />
 
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-purple-600 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-white" />
-            </div>
-            <h3 className="text-sm font-medium text-gray-400">Average Balance</h3>
-          </div>
-          <p className="text-2xl font-bold text-white">${avgBalance.toLocaleString()}</p>
-        </div>
+        <MetricCard
+          title="Average Balance"
+          value={formatCurrency(avgBalance)}
+          subtitle="Across all statements"
+          variant="default"
+        />
 
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <div className="flex items-center gap-3 mb-3">
-            <div className={`w-10 h-10 ${balanceTrend >= 0 ? 'bg-green-600' : 'bg-red-600'} rounded-lg flex items-center justify-center`}>
-              {balanceTrend >= 0 ? <TrendingUp className="w-5 h-5 text-white" /> : <TrendingDown className="w-5 h-5 text-white" />}
-            </div>
-            <h3 className="text-sm font-medium text-gray-400">3-Month Trend</h3>
-          </div>
-          <p className={`text-2xl font-bold ${balanceTrend >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {balanceTrend >= 0 ? '+' : ''}${balanceTrend.toLocaleString()}
-          </p>
-        </div>
+        <MetricCard
+          title="3-Month Trend"
+          value={formatCurrency(Math.abs(balanceTrend))}
+          subtitle="Balance change trend"
+          variant={balanceTrend >= 0 ? 'success' : 'warning'}
+          trend={{
+            value: `${balanceTrend >= 0 ? '+' : ''}${formatCurrency(balanceTrend)}`,
+            direction: balanceTrend >= 0 ? 'up' : 'down',
+            isPositive: balanceTrend >= 0
+          }}
+        />
       </div>
 
-      {/* Simple Table - Same style as transaction page */}
-      <div className="bg-gray-800 rounded-lg border border-gray-700">
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <h3 className="text-xl font-semibold text-white">Statements</h3>
+      {/* Statements Table - DESIGN SYSTEM */}
+      <div className="card-standard">
+        <div className="flex items-center justify-between content-gap border-b border-gray-700 pb-6">
+          <h3 className="section-title">Statements</h3>
+          <span className="text-sm text-gray-400">
+            {bankBalances.length} statement{bankBalances.length !== 1 ? 's' : ''}
+          </span>
         </div>
         
         <div className="overflow-x-auto">
@@ -193,57 +194,69 @@ export default function BankStatementsView() {
               </tr>
             </thead>
             <tbody>
-              {bankBalances
-                .sort((a, b) => new Date(b.statement_date).getTime() - new Date(a.statement_date).getTime())
-                .map((balance) => {
-                  const netChange = balance.ending_balance - balance.beginning_balance;
-                  return (
-                    <tr key={balance.id} className="border-b border-gray-700/50 hover:bg-gray-700/20 transition-colors">
-                      <td className="p-4">
-                        <div>
-                          <p className="text-white font-medium">{balance.statement_month}</p>
-                          <p className="text-gray-400 text-sm">{new Date(balance.statement_date).toLocaleDateString()}</p>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div>
-                          <p className="text-white">{balance.account_name}</p>
-                          {balance.account_number && (
-                            <p className="text-gray-400 text-sm">#{balance.account_number}</p>
-                          )}
-                        </div>
-                      </td>
-                      <td className="text-right text-white p-4 font-medium">
-                        ${balance.beginning_balance.toLocaleString()}
-                      </td>
-                      <td className="text-right text-white font-bold p-4">
-                        ${balance.ending_balance.toLocaleString()}
-                      </td>
-                      <td className={`text-right p-4 font-medium ${netChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {netChange >= 0 ? '+' : ''}${netChange.toLocaleString()}
-                      </td>
-                      <td className="text-center p-4">
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                          balance.data_source === 'pdf_statement' 
-                            ? 'bg-green-900/30 text-green-400' 
-                            : 'bg-blue-900/30 text-blue-400'
-                        }`}>
-                          {balance.data_source === 'pdf_statement' ? 'PDF' : 'Manual'}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
+              {bankBalances.length > 0 ? (
+                bankBalances
+                  .sort((a, b) => new Date(b.statement_date).getTime() - new Date(a.statement_date).getTime())
+                  .map((balance) => {
+                    const netChange = balance.ending_balance - balance.beginning_balance;
+                    return (
+                      <tr key={balance.id} className="border-b border-gray-700/50 hover:bg-gray-700/20 transition-colors">
+                        <td className="p-4">
+                          <div>
+                            <p className="text-white font-medium">{balance.statement_month}</p>
+                            <p className="text-gray-400 text-sm">{new Date(balance.statement_date).toLocaleDateString()}</p>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div>
+                            <p className="text-white">{balance.account_name}</p>
+                            {balance.account_number && (
+                              <p className="text-gray-400 text-sm">#{balance.account_number}</p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="text-right text-white p-4 font-medium">
+                          {formatCurrency(balance.beginning_balance)}
+                        </td>
+                        <td className="text-right text-white font-bold p-4">
+                          {formatCurrency(balance.ending_balance)}
+                        </td>
+                        <td className={`text-right p-4 font-medium ${netChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {netChange >= 0 ? '+' : ''}{formatCurrency(netChange)}
+                        </td>
+                        <td className="text-center p-4">
+                          <span className={`status-badge ${
+                            balance.data_source === 'pdf_statement' 
+                              ? 'status-success' 
+                              : 'status-info'
+                          }`}>
+                            {balance.data_source === 'pdf_statement' ? 'PDF' : 'Manual'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+              ) : (
+                <tr>
+                  <td colSpan={6} className="text-center p-8">
+                    <p className="text-gray-400">No bank statements found</p>
+                    <p className="text-gray-500 text-sm mt-1">Upload statements to see data here</p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
-        
-        {/* Simple Footer */}
-        <div className="p-4 border-t border-gray-700 bg-gray-800/50">
-          <p className="text-sm text-gray-400 text-center">
-            {bankBalances.length} statement{bankBalances.length !== 1 ? 's' : ''} • Last updated {latestBalance ? new Date(latestBalance.statement_date).toLocaleDateString() : 'Never'}
-          </p>
-        </div>
+
+        {/* Table Footer - DESIGN SYSTEM */}
+        {bankBalances.length > 0 && (
+          <div className="p-4 border-t border-gray-700 bg-gray-800/30">
+            <p className="text-sm text-gray-400 text-center">
+              {bankBalances.length} statement{bankBalances.length !== 1 ? 's' : ''} • 
+              Last updated {latestBalance ? new Date(latestBalance.statement_date).toLocaleDateString() : 'Never'}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

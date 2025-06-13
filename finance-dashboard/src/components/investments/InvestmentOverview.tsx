@@ -1,4 +1,4 @@
-// src/components/investments/InvestmentOverview.tsx
+// src/components/investments/InvestmentOverview.tsx - PHASE 4.6 CONVERSION - Remove Internal Grid
 import React from 'react';
 import { InvestmentOverviewData } from '../../types/api';
 import MetricCard from '../cards/MetricCard';
@@ -10,28 +10,6 @@ interface InvestmentOverviewProps {
 }
 
 export default function InvestmentOverview({ data, isLoading }: InvestmentOverviewProps) {
-  if (isLoading) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {[...Array(4)].map((_, i) => (
-          <LoadingSkeleton key={i} className="h-32" />
-        ))}
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="col-span-full">
-          <div className="bg-gray-800 border border-gray-600 rounded-lg p-6">
-            <p className="text-gray-400 text-center">No investment data available</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Format currency values
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -64,8 +42,30 @@ export default function InvestmentOverview({ data, isLoading }: InvestmentOvervi
     return { direction: 'down' as const, value: 'Irregular' };
   };
 
+  if (isLoading) {
+    return (
+      <>
+        <LoadingSkeleton variant="metric" />
+        <LoadingSkeleton variant="metric" />
+        <LoadingSkeleton variant="metric" />
+        <LoadingSkeleton variant="metric" />
+      </>
+    );
+  }
+
+  if (!data) {
+    return (
+      <>
+        <div className="card-standard col-span-full">
+          <p className="text-gray-400 text-center">No investment data available</p>
+        </div>
+      </>
+    );
+  }
+
+  // CONVERTED: Return individual MetricCards (no internal grid)
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <>
       {/* Total Invested */}
       <MetricCard
         title="Total Invested"
@@ -82,7 +82,8 @@ export default function InvestmentOverview({ data, isLoading }: InvestmentOvervi
         variant="default"
         trend={{
           direction: data.monthly_average > 500 ? 'up' : data.monthly_average > 200 ? 'neutral' : 'down',
-          value: data.best_month.month
+          value: data.best_month.month,
+          isPositive: data.monthly_average > 300
         }}
       />
 
@@ -103,6 +104,6 @@ export default function InvestmentOverview({ data, isLoading }: InvestmentOvervi
         variant="default"
         trend={getConsistencyTrend(data.consistency_score)}
       />
-    </div>
+    </>
   );
 }

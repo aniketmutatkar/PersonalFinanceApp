@@ -1,4 +1,4 @@
-// src/pages/MonthlyView.tsx - Fixed with previous month data and enhanced spending patterns
+// src/pages/MonthlyView.tsx - PHASE 4.2 CONVERSION - Design System Implementation
 import React, { useState, useMemo } from 'react';
 import { useMonthlySummariesRecent, useTransactions } from '../hooks/useApiData';
 import MonthSelector from '../components/monthly/MonthSelector';
@@ -86,17 +86,24 @@ export default function MonthlyView() {
 
   if (summariesLoading || !summariesResponse || !selectedMonth) {
     return (
-      <div className="h-full">
-        <div className="mb-10">
-          <h1 className="text-4xl font-bold text-white mb-3">Monthly Analysis</h1>
-          <div className="h-4 w-64 bg-gray-700 rounded animate-pulse"></div>
+      <div className="page-content">
+        {/* Page Header Skeleton - DESIGN SYSTEM */}
+        <div className="section-gap">
+          <div className="page-title bg-gray-700 rounded animate-pulse h-8 w-64"></div>
+          <div className="h-4 w-96 bg-gray-700 rounded animate-pulse"></div>
         </div>
         
-        <div className="grid grid-cols-12 gap-8 h-full">
-          <LoadingSkeleton variant="metric" className="col-span-8 h-48" />
-          <LoadingSkeleton variant="metric" className="col-span-4 h-48" />
-          <LoadingSkeleton variant="list" lines={5} className="col-span-6 h-64" />
-          <LoadingSkeleton variant="list" lines={4} className="col-span-6 h-64" />
+        {/* Content Skeletons - DESIGN SYSTEM */}
+        <div className="grid-metrics-4">
+          <LoadingSkeleton variant="metric" />
+          <LoadingSkeleton variant="metric" />
+          <LoadingSkeleton variant="metric" />
+          <LoadingSkeleton variant="metric" />
+        </div>
+        <div className="grid-layout-12">
+          <LoadingSkeleton variant="chart" className="col-6" />
+          <LoadingSkeleton variant="chart" className="col-6" />
+          <LoadingSkeleton variant="list" className="col-12" />
         </div>
       </div>
     );
@@ -109,8 +116,8 @@ export default function MonthlyView() {
   }));
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Page Header */}
+    <div className="page-content">
+      {/* Page Header - DESIGN SYSTEM */}
       <PageHeader
         title="Monthly Analysis"
         subtitle="Detailed breakdown and transaction analysis"
@@ -124,38 +131,42 @@ export default function MonthlyView() {
       />
 
       {selectedSummary && (
-        <div className="flex-1 grid grid-cols-12 gap-8">
-          {/* Monthly Metrics - Top Row */}
-          <div className="col-span-12">
+        <>
+          {/* Monthly Metrics Row - DESIGN SYSTEM */}
+          <div className="grid-metrics-4">
             <MonthlyMetrics 
               summary={selectedSummary} 
               previousSummary={previousSummary}
             />
           </div>
 
-          {/* Category Chart and Spending Patterns - Middle Row */}
-          <div className="col-span-6">
-            <CategoryChart 
-              summary={selectedSummary}
-              transactions={transactionsResponse?.items || []}
-            />
+          {/* Charts Row - DESIGN SYSTEM */}
+          <div className="grid-layout-12">
+            <div className="col-6">
+              <CategoryChart 
+                summary={selectedSummary}
+                transactions={transactionsResponse?.items || []}
+              />
+            </div>
+
+            <div className="col-6">
+              <SpendingPatternsChart 
+                transactions={transactionsResponse?.items || []}
+                monthYear={selectedSummary.month_year}
+              />
+            </div>
           </div>
 
-          <div className="col-span-6">
-            <SpendingPatternsChart 
-              transactions={transactionsResponse?.items || []}
-              monthYear={selectedSummary.month_year}
-            />
+          {/* Transaction Table Row - DESIGN SYSTEM */}
+          <div className="grid-layout-12">
+            <div className="col-12">
+              <TransactionTable 
+                transactions={transactionsResponse?.items || []}
+                isLoading={transactionsLoading}
+              />
+            </div>
           </div>
-
-          {/* Transaction Table - Bottom Row */}
-          <div className="col-span-12">
-            <TransactionTable 
-              transactions={transactionsResponse?.items || []}
-              isLoading={transactionsLoading}
-            />
-          </div>
-        </div>
+        </>
       )}
     </div>
   );
