@@ -229,6 +229,13 @@ export interface YearlyData {
   average_monthly_spending: number;
   average_monthly_income: number;
   average_monthly_investments: number;
+  total_income: number;
+  total_spending: number;
+  total_investments: number;
+  months_count: number;
+  avg_monthly_spending: number;
+  avg_monthly_income: number;
+  avg_monthly_investments: number;
 }
 
 export interface YearComparisonResponse {

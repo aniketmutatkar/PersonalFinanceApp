@@ -3,7 +3,8 @@ import React, { useState, useMemo } from 'react';
 import { useYearComparison } from '../hooks/useApiData';
 import YearSelector from '../components/analytics/YearSelector';
 import YearTrendsChart from '../components/analytics/YearTrendsChart';
-import CategoryEvolution from '../components/analytics/CategoryEvolution';
+import CategoryHeatmap from '../components/analytics/CategoryHeatmap';
+import YearComparisonPanel from '../components/analytics/YearComparisonPanel';
 import LoadingSkeleton from '../components/ui/LoadingSkeleton';
 
 export default function YearAnalysisPage() {
@@ -117,11 +118,11 @@ export default function YearAnalysisPage() {
   return (
     <div className="h-full flex flex-col">
       {/* Page Header */}
-      <div className="mb-12 flex justify-between items-end">
+      <div className="mb-8 flex justify-between items-end">
         <div>
-          <h1 className="text-5xl font-bold text-white mb-4">Year Analysis</h1>
+          <h1 className="text-4xl font-bold text-white mb-3">Year Analysis</h1>
           <p className="text-xl text-gray-400">
-            Multi-year trends and category evolution analysis
+            Complete financial trajectory and category evolution insights
           </p>
         </div>
         
@@ -134,52 +135,60 @@ export default function YearAnalysisPage() {
 
       {/* Summary Statistics Row */}
       {summaryStats && (
-        <div className="mb-8 grid grid-cols-4 gap-6">
-          <div className="bg-gray-800 border border-gray-600 rounded-lg p-6">
-            <h3 className="text-gray-400 text-sm mb-2">Years Analyzed</h3>
-            <p className="text-white text-3xl font-bold">{summaryStats.yearsAnalyzed}</p>
+        <div className="mb-6 grid grid-cols-4 gap-5">
+          <div className="bg-gray-800 border border-gray-600 rounded-lg p-5">
+            <h3 className="text-gray-400 text-sm mb-2 uppercase font-medium tracking-wide">Years Analyzed</h3>
+            <p className="text-white text-2xl font-bold">{summaryStats.yearsAnalyzed}</p>
           </div>
           
-          <div className="bg-gray-800 border border-gray-600 rounded-lg p-6">
-            <h3 className="text-gray-400 text-sm mb-2">Avg Annual Income</h3>
-            <p className="text-green-400 text-3xl font-bold">
+          <div className="bg-gray-800 border border-gray-600 rounded-lg p-5">
+            <h3 className="text-gray-400 text-sm mb-2 uppercase font-medium tracking-wide">Avg Annual Income</h3>
+            <p className="text-green-400 text-2xl font-bold">
               ${summaryStats.avgIncome.toLocaleString()}
             </p>
           </div>
           
-          <div className="bg-gray-800 border border-gray-600 rounded-lg p-6">
-            <h3 className="text-gray-400 text-sm mb-2">Avg Annual Spending</h3>
-            <p className="text-blue-400 text-3xl font-bold">
+          <div className="bg-gray-800 border border-gray-600 rounded-lg p-5">
+            <h3 className="text-gray-400 text-sm mb-2 uppercase font-medium tracking-wide">Avg Annual Spending</h3>
+            <p className="text-blue-400 text-2xl font-bold">
               ${summaryStats.avgSpending.toLocaleString()}
             </p>
           </div>
           
-          <div className="bg-gray-800 border border-gray-600 rounded-lg p-6">
-            <h3 className="text-gray-400 text-sm mb-2">Savings Rate</h3>
-            <p className="text-purple-400 text-3xl font-bold">
+          <div className="bg-gray-800 border border-gray-600 rounded-lg p-5">
+            <h3 className="text-gray-400 text-sm mb-2 uppercase font-medium tracking-wide">Savings Rate</h3>
+            <p className="text-purple-400 text-2xl font-bold">
               {summaryStats.savingsRate.toFixed(1)}%
             </p>
           </div>
         </div>
       )}
 
-      {/* Main Charts - Clean 2x1 Layout */}
-      <div className="flex-1 grid grid-cols-1 gap-8">
-        {/* Year-over-Year Trends */}
-        <div className="col-span-1">
+      {/* Main Layout: Trends + Comparison - Better proportions */}
+      <div className="mb-6 grid grid-cols-5 gap-6">
+        {/* Year Trends Chart - Takes up 3/5 of the width */}
+        <div className="col-span-3">
           <YearTrendsChart 
             yearData={yearComparisonData.years}
             selectedYears={selectedYears}
           />
         </div>
 
-        {/* Category Evolution */}
-        <div className="col-span-1">
-          <CategoryEvolution 
+        {/* Year Comparison Panel - Takes up 2/5 of the width */}
+        <div className="col-span-2">
+          <YearComparisonPanel
             yearData={yearComparisonData.years}
-            selectedYears={selectedYears}
+            availableYears={availableYears}
           />
         </div>
+      </div>
+
+      {/* Category Evolution - Full Width */}
+      <div className="flex-1">
+        <CategoryHeatmap 
+          yearData={yearComparisonData.years}
+          selectedYears={selectedYears}
+        />
       </div>
     </div>
   );
