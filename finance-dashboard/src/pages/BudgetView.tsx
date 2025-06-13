@@ -1,4 +1,4 @@
-// src/pages/BudgetView.tsx
+// src/pages/BudgetView.tsx - Fixed with proper vertical spacing
 import React, { useState, useMemo } from 'react';
 import { useYearlyBudgetAnalysis, useBudgetAnalysis, useMonthlySummaries } from '../hooks/useApiData';
 import MonthSelector from '../components/monthly/MonthSelector';
@@ -39,7 +39,7 @@ export default function BudgetView() {
     }
   }, [availableYears, availableMonths, selectedYear, selectedMonth]);
 
-  // Fetch yearly or monthly data based on view
+  // Fetch current year data
   const { 
     data: yearlyBudgetData, 
     isLoading: yearlyLoading, 
@@ -49,6 +49,21 @@ export default function BudgetView() {
     queryKey: ['yearly-budget-analysis', selectedYear]
   });
 
+  // Fetch previous year data for trends (only for yearly view)
+  const previousYear = selectedYear - 1;
+  const shouldFetchPreviousYear = selectedView === 'yearly' && availableYears.includes(previousYear);
+  
+  const { 
+    data: previousYearBudgetData, 
+    isLoading: previousYearLoading 
+  } = useYearlyBudgetAnalysis(previousYear, { 
+    enabled: shouldFetchPreviousYear,
+    queryKey: ['yearly-budget-analysis', previousYear],
+    // Don't refetch as often since this is just for comparison
+    staleTime: 10 * 60 * 1000, // 10 minutes
+  });
+
+  // Fetch monthly data
   const { 
     data: monthlyBudgetData, 
     isLoading: monthlyLoading, 
@@ -58,7 +73,9 @@ export default function BudgetView() {
     queryKey: ['budget-analysis', selectedMonth]
   });
 
-  const isLoading = selectedView === 'yearly' ? yearlyLoading : monthlyLoading;
+  const isLoading = selectedView === 'yearly' 
+    ? (yearlyLoading || (shouldFetchPreviousYear && previousYearLoading))
+    : monthlyLoading;
   const isError = selectedView === 'yearly' ? yearlyError : monthlyError;
 
   if (isError) {
@@ -74,7 +91,7 @@ export default function BudgetView() {
 
   if (isLoading) {
     return (
-      <div className="h-full">
+      <div className="h-screen p-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white mb-2">Budget Analysis</h1>
           <div className="h-4 w-64 bg-gray-700 rounded animate-pulse"></div>
@@ -90,13 +107,16 @@ export default function BudgetView() {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Page Header */}
-      <div className="mb-8 flex justify-between items-end">
+    <div className="h-screen p-8 flex flex-col">
+      {/* Page Header - Fixed height */}
+      <div className="mb-8 flex justify-between items-end flex-shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-white mb-2">Budget Analysis</h1>
           <p className="text-sm text-gray-400">
             Track your spending against planned budgets
+            {selectedView === 'yearly' && previousYearBudgetData && (
+              <span className="ml-2 text-green-400">• Year-over-year trends enabled</span>
+            )}
           </p>
         </div>
         
@@ -150,41 +170,43 @@ export default function BudgetView() {
         </div>
       </div>
 
-      {/* Budget Content */}
-      <div className="flex-1 grid grid-cols-12 gap-8">
+      {/* Budget Content - FIXED VERTICAL SPACING */}
+      <div className="flex-1 min-h-0 space-y-8">
         {selectedView === 'yearly' && yearlyBudgetData ? (
           <>
             {/* Yearly Budget Metrics */}
-            <div className="col-span-12">
+            <div>
               <BudgetMetrics 
                 data={yearlyBudgetData} 
                 type="yearly" 
                 year={selectedYear}
+                previousYearData={previousYearBudgetData}
               />
             </div>
 
-            {/* Yearly Budget Chart */}
-            <div className="col-span-8">
-              <BudgetChart 
-                data={yearlyBudgetData} 
-                type="yearly" 
-                year={selectedYear}
-              />
-            </div>
+            {/* Yearly Chart/Table Row */}
+            <div className="grid grid-cols-12 gap-8">
+              <div className="col-span-7 h-[500px]">
+                <BudgetChart 
+                  data={yearlyBudgetData} 
+                  type="yearly" 
+                  year={selectedYear}
+                />
+              </div>
 
-            {/* Yearly Budget Alerts */}
-            <div className="col-span-4">
-              <BudgetTable 
-                data={yearlyBudgetData} 
-                type="yearly" 
-                year={selectedYear}
-              />
+              <div className="col-span-5 h-[500px]">
+                <BudgetTable 
+                  data={yearlyBudgetData} 
+                  type="yearly" 
+                  year={selectedYear}
+                />
+              </div>
             </div>
           </>
         ) : selectedView === 'monthly' && monthlyBudgetData ? (
           <>
             {/* Monthly Budget Metrics */}
-            <div className="col-span-12">
+            <div>
               <BudgetMetrics 
                 data={monthlyBudgetData} 
                 type="monthly" 
@@ -192,35 +214,28 @@ export default function BudgetView() {
               />
             </div>
 
-            {/* Monthly Budget Chart */}
-            <div className="col-span-8">
-              <BudgetChart 
-                data={monthlyBudgetData} 
-                type="monthly" 
-                monthYear={selectedMonth}
-              />
-            </div>
+            {/* Monthly Chart/Table Row */}
+            <div className="grid grid-cols-12 gap-8">
+              <div className="col-span-7 h-[500px]">
+                <BudgetChart 
+                  data={monthlyBudgetData} 
+                  type="monthly" 
+                  monthYear={selectedMonth}
+                />
+              </div>
 
-            {/* Monthly Budget Table */}
-            <div className="col-span-4">
-              <BudgetTable 
-                data={monthlyBudgetData} 
-                type="monthly" 
-                monthYear={selectedMonth}
-              />
+              <div className="col-span-5 h-[500px]">
+                <BudgetTable 
+                  data={monthlyBudgetData} 
+                  type="monthly" 
+                  monthYear={selectedMonth}
+                />
+              </div>
             </div>
           </>
         ) : (
-          <div className="col-span-12 flex items-center justify-center h-64">
-            <div className="text-center text-gray-500">
-              <p>No budget data available</p>
-              <p className="text-sm mt-2">
-                {selectedView === 'yearly' 
-                  ? `No data for year ${selectedYear}` 
-                  : `No data for ${selectedMonth}`
-                }
-              </p>
-            </div>
+          <div className="flex items-center justify-center h-64">
+            <p className="text-gray-400">No budget data available for the selected period</p>
           </div>
         )}
       </div>

@@ -1,4 +1,4 @@
-// src/components/budget/BudgetChart.tsx - Fixed Chronological Ordering
+// src/components/budget/BudgetChart.tsx - Simplified & Uniform
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -19,12 +19,16 @@ export default function BudgetChart({ data, type, year, monthYear }: BudgetChart
           category: item.category,
           budget: Number(item.budget_amount),
           actual: Number(item.actual_amount),
+          variance: Number(item.budget_amount) - Number(item.actual_amount),
+          variancePercent: Number(item.budget_amount) > 0 
+            ? ((Number(item.budget_amount) - Number(item.actual_amount)) / Number(item.budget_amount)) * 100 
+            : 0,
           isOverBudget: item.is_over_budget
         }))
         .sort((a: any, b: any) => b.budget - a.budget)
         .slice(0, 10); // Top 10 categories
     } else {
-      // Yearly view - show budget vs actual by month in CHRONOLOGICAL order (Jan → Dec)
+      // Yearly view - show budget vs actual by month in CHRONOLOGICAL order
       const months = data.months || [];
       const budgetData = data.budget_data || {};
       
@@ -39,7 +43,7 @@ export default function BudgetChart({ data, type, year, monthYear }: BudgetChart
         return monthMap[monthName] || 0;
       };
       
-      // Sort months chronologically (January → December)
+      // Sort months chronologically
       const sortedMonths = months.sort((a: string, b: string) => {
         return getMonthNumber(a) - getMonthNumber(b);
       });
@@ -59,14 +63,19 @@ export default function BudgetChart({ data, type, year, monthYear }: BudgetChart
           if (item.is_over_budget) overBudgetCount++;
         });
         
+        const variance = monthlyBudget - monthlyActual;
+        const adherenceRate = totalCategories > 0 ? 
+          ((totalCategories - overBudgetCount) / totalCategories) * 100 : 100;
+        
         return {
-          month: month.substring(0, 3), // Abbreviate month names (Jan, Feb, etc.)
+          month: month.substring(0, 3), // Abbreviate month names
           budget: monthlyBudget,
           actual: monthlyActual,
-          variance: monthlyBudget - monthlyActual,
-          overBudgetCount,
-          adherenceRate: totalCategories > 0 ? 
-            ((totalCategories - overBudgetCount) / totalCategories) * 100 : 100
+          variance: variance,
+          variancePercent: monthlyBudget > 0 ? (variance / monthlyBudget) * 100 : 0,
+          adherenceRate: adherenceRate,
+          overBudgetCount: overBudgetCount,
+          isOverBudget: monthlyActual > monthlyBudget
         };
       });
     }
@@ -81,38 +90,46 @@ export default function BudgetChart({ data, type, year, monthYear }: BudgetChart
     }).format(value);
   };
 
+  // Enhanced tooltip with better information
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
+      const data = payload[0]?.payload;
+      
       if (type === 'monthly') {
-        const budget = payload.find((p: any) => p.dataKey === 'budget')?.value || 0;
-        const actual = payload.find((p: any) => p.dataKey === 'actual')?.value || 0;
-        const variance = budget - actual;
-        const isOverBudget = actual > budget;
-        
         return (
-          <div className="bg-gray-700 border border-gray-600 rounded-lg p-3">
-            <p className="text-white font-semibold">{label}</p>
-            <p className="text-blue-400">Budget: {formatCurrency(budget)}</p>
-            <p className="text-green-400">Actual: {formatCurrency(actual)}</p>
-            <p className={`${isOverBudget ? 'text-red-400' : 'text-green-400'}`}>
-              Variance: {formatCurrency(Math.abs(variance))} {isOverBudget ? 'over' : 'under'}
-            </p>
+          <div className="bg-gray-800 border border-gray-600 rounded-lg p-4 shadow-lg">
+            <p className="text-white font-semibold mb-2">{label}</p>
+            <div className="space-y-1">
+              <p className="text-blue-400">Budget: {formatCurrency(data.budget)}</p>
+              <p className="text-green-400">Actual: {formatCurrency(data.actual)}</p>
+              <p className={`font-semibold ${data.isOverBudget ? 'text-red-400' : 'text-green-400'}`}>
+                Variance: {formatCurrency(Math.abs(data.variance))} {data.isOverBudget ? 'over' : 'under'}
+              </p>
+              <p className="text-gray-300 text-sm">
+                {data.variancePercent > 0 ? 'Under' : 'Over'} by {Math.abs(data.variancePercent).toFixed(1)}%
+              </p>
+            </div>
           </div>
         );
       } else {
-        const budget = payload.find((p: any) => p.dataKey === 'budget')?.value || 0;
-        const actual = payload.find((p: any) => p.dataKey === 'actual')?.value || 0;
-        const data = payload[0]?.payload;
-        
         return (
-          <div className="bg-gray-700 border border-gray-600 rounded-lg p-3">
-            <p className="text-white font-semibold">{label}</p>
-            <p className="text-blue-400">Budget: {formatCurrency(budget)}</p>
-            <p className="text-green-400">Actual: {formatCurrency(actual)}</p>
-            <p className="text-gray-300">Adherence: {data.adherenceRate.toFixed(1)}%</p>
-            {data.overBudgetCount > 0 && (
-              <p className="text-red-400">{data.overBudgetCount} categories over budget</p>
-            )}
+          <div className="bg-gray-800 border border-gray-600 rounded-lg p-4 shadow-lg">
+            <p className="text-white font-semibold mb-2">{label}</p>
+            <div className="space-y-1">
+              <p className="text-blue-400">Budget: {formatCurrency(data.budget)}</p>
+              <p className="text-green-400">Actual: {formatCurrency(data.actual)}</p>
+              <p className={`font-semibold ${data.isOverBudget ? 'text-red-400' : 'text-green-400'}`}>
+                Variance: {formatCurrency(Math.abs(data.variance))} {data.isOverBudget ? 'over' : 'under'}
+              </p>
+              <p className="text-gray-300 text-sm">
+                Adherence Rate: {data.adherenceRate.toFixed(1)}%
+              </p>
+              {data.overBudgetCount > 0 && (
+                <p className="text-red-400 text-sm">
+                  {data.overBudgetCount} categories over budget
+                </p>
+              )}
+            </div>
           </div>
         );
       }
@@ -121,12 +138,17 @@ export default function BudgetChart({ data, type, year, monthYear }: BudgetChart
   };
 
   const title = type === 'monthly' 
-    ? `Budget vs Actual - ${monthYear}`
-    : `Monthly Budget Performance - ${year}`;
+    ? `Budget Analysis - ${monthYear}`
+    : `Monthly Budget Trends - ${year}`;
+
+  const xAxisKey = type === 'monthly' ? 'category' : 'month';
 
   return (
-    <div className="bg-gray-800 border border-gray-600 rounded-lg p-8 h-full">
-      <h3 className="text-white font-semibold text-base mb-6">{title}</h3>
+    <div className="bg-gray-800 border border-gray-600 rounded-lg p-6 h-full">
+      {/* Simplified Header - NO CONTROLS */}
+      <div className="mb-6">
+        <h3 className="text-white font-semibold text-lg">{title}</h3>
+      </div>
       
       {chartData.length > 0 ? (
         <div className="h-[400px]">
@@ -134,37 +156,49 @@ export default function BudgetChart({ data, type, year, monthYear }: BudgetChart
             <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis 
-                dataKey={type === 'monthly' ? 'category' : 'month'} 
-                stroke="#9CA3AF" 
-                fontSize={12}
+                dataKey={xAxisKey}
+                tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                stroke="#9CA3AF"
                 angle={type === 'monthly' ? -45 : 0}
                 textAnchor={type === 'monthly' ? 'end' : 'middle'}
+                height={type === 'monthly' ? 80 : 60}
               />
               <YAxis 
-                stroke="#9CA3AF" 
-                fontSize={12}
+                tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                stroke="#9CA3AF"
                 tickFormatter={formatCurrency}
               />
               <Tooltip content={<CustomTooltip />} />
-              <Legend />
+              <Legend 
+                wrapperStyle={{ color: '#9CA3AF' }}
+              />
               <Bar 
                 dataKey="budget" 
-                fill="#3B82F6" 
+                fill="#94a3b8" 
                 name="Budget"
-                radius={[2, 2, 0, 0]}
+                radius={[4, 4, 0, 0]}
+                fillOpacity={0.8}
               />
               <Bar 
                 dataKey="actual" 
-                fill="#10B981" 
+                fill="#3b82f6"
                 name="Actual"
-                radius={[2, 2, 0, 0]}
+                radius={[4, 4, 0, 0]}
               />
             </BarChart>
           </ResponsiveContainer>
         </div>
       ) : (
-        <div className="flex items-center justify-center h-[400px] text-gray-500">
-          <p>No budget data available for {type === 'monthly' ? monthYear : year}</p>
+        <div className="h-[400px] flex items-center justify-center">
+          <div className="text-center text-gray-400">
+            <p className="text-lg mb-2">No Data Available</p>
+            <p className="text-sm">
+              {type === 'monthly' 
+                ? `No budget data for ${monthYear}`
+                : `No budget data for ${year}`
+              }
+            </p>
+          </div>
         </div>
       )}
     </div>
