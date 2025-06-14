@@ -1,7 +1,13 @@
-// src/pages/BudgetView.tsx - PHASE 4.5 CONVERSION - Design System Implementation
+// src/pages/BudgetView.tsx - PHASE 5.1 SELECTOR STANDARDIZATION
+// UPDATED: MonthSelector → UniversalSelect, Toggle buttons → UniversalToggle
+
 import React, { useState, useMemo } from 'react';
 import { useYearlyBudgetAnalysis, useBudgetAnalysis, useMonthlySummaries } from '../hooks/useApiData';
-import MonthSelector from '../components/monthly/MonthSelector';
+
+// UPDATED: Import universal selectors instead of MonthSelector
+import UniversalSelect from '../components/ui/UniversalSelect';
+import UniversalToggle from '../components/ui/UniversalToggle';
+
 import BudgetMetrics from '../components/budget/BudgetMetrics';
 import BudgetChart from '../components/budget/BudgetChart';
 import BudgetTable from '../components/budget/BudgetTable';
@@ -29,6 +35,20 @@ export default function BudgetView() {
       label: s.month_year
     }));
   }, [summariesResponse]);
+
+  // UPDATED: Convert availableYears to options format for UniversalSelect
+  const yearOptions = useMemo(() => {
+    return availableYears.map(year => ({
+      value: year,
+      label: year.toString()
+    }));
+  }, [availableYears]);
+
+  // UPDATED: Options for view toggle
+  const viewToggleOptions = [
+    { value: 'yearly', label: 'Yearly View' },
+    { value: 'monthly', label: 'Monthly View' }
+  ];
 
   // Set default year and month
   React.useEffect(() => {
@@ -124,50 +144,33 @@ export default function BudgetView() {
         subtitle="Track spending against budgets with detailed category insights"
         actions={
           <div className="flex items-center gap-4">
-            {/* View Toggle */}
-            <div className="flex bg-gray-800 rounded-lg p-1">
-              <button
-                onClick={() => setSelectedView('yearly')}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                  selectedView === 'yearly' 
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-300 hover:text-white'
-                }`}
-              >
-                Yearly View
-              </button>
-              <button
-                onClick={() => setSelectedView('monthly')}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                  selectedView === 'monthly' 
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-300 hover:text-white'
-                }`}
-              >
-                Monthly View
-              </button>
-            </div>
+            {/* UPDATED: View Toggle - replaced hardcoded buttons with UniversalToggle */}
+            <UniversalToggle
+              options={viewToggleOptions}
+              value={selectedView}
+              onChange={(value) => setSelectedView(value as 'yearly' | 'monthly')}
+              variant="segments" // Matches your current connected button style
+              size="md"
+            />
 
-            {/* Year/Month Selector */}
+            {/* UPDATED: Year/Month Selector - UNIVERSAL DEFAULTS */}
             {selectedView === 'yearly' ? (
-              <select
+              <UniversalSelect
+                options={yearOptions}
                 value={selectedYear}
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="
-                  bg-gray-800 border border-gray-600 rounded-lg
-                  px-4 py-2 text-white text-sm
-                  focus:outline-none focus:border-blue-500
-                "
-              >
-                {availableYears.map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
+                onChange={(value) => setSelectedYear(Number(value))}
+                placeholder="Select Year"
+                size="sm" // Small for short year values
+              />
             ) : (
-              <MonthSelector
+              <UniversalSelect
                 options={availableMonths}
                 value={selectedMonth}
-                onChange={setSelectedMonth}
+                onChange={(value) => setSelectedMonth(String(value))}
+                placeholder="Select Month"
+                searchable={true}
+                // size="md" is default - no need to specify
+                // width is automatic based on size
               />
             )}
           </div>
@@ -238,7 +241,17 @@ export default function BudgetView() {
         </>
       ) : (
         <div className="flex items-center justify-center h-64">
-          <p className="text-gray-400">No budget data available for the selected period</p>
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-gray-400 mb-2">
+              {selectedView === 'yearly' ? 'No yearly data available' : 'No monthly data available'}
+            </h2>
+            <p className="text-gray-500">
+              {selectedView === 'yearly' 
+                ? `No budget data found for ${selectedYear}` 
+                : `No budget data found for ${selectedMonth}`
+              }
+            </p>
+          </div>
         </div>
       )}
     </div>

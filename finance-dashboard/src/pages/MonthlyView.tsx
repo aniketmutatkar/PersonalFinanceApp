@@ -1,7 +1,13 @@
-// src/pages/MonthlyView.tsx - PHASE 4.2 CONVERSION - Design System Implementation
+// src/pages/MonthlyView.tsx - MINIMAL SELECTOR STANDARDIZATION FIX
+// ONLY changing MonthSelector → UniversalSelect, preserving ALL original functionality
+
 import React, { useState, useMemo } from 'react';
 import { useMonthlySummariesRecent, useTransactions } from '../hooks/useApiData';
-import MonthSelector from '../components/monthly/MonthSelector';
+
+// ONLY CHANGE: Import UniversalSelect instead of MonthSelector
+import UniversalSelect from '../components/ui/UniversalSelect';
+
+// KEEPING ALL YOUR ORIGINAL IMPORTS
 import MonthlyMetrics from '../components/monthly/MonthlyMetrics';
 import CategoryChart from '../components/monthly/CategoryChart';
 import SpendingPatternsChart from '../components/monthly/SpendingPatternsChart';
@@ -10,7 +16,7 @@ import LoadingSkeleton from '../components/ui/LoadingSkeleton';
 import PageHeader from '../components/layout/PageHeader';
 
 export default function MonthlyView() {
-  // Use the recent hook for newest-first ordering (good for dropdowns)
+  // KEEPING ALL YOUR ORIGINAL LOGIC
   const { data: summariesResponse, isLoading: summariesLoading, isError: summariesError } = useMonthlySummariesRecent();
   
   // Get the most recent month as default
@@ -31,7 +37,7 @@ export default function MonthlyView() {
     }
   }, [defaultMonth, selectedMonth]);
 
-  // Get selected month data and previous month data
+  // KEEPING ALL YOUR ORIGINAL DATA PROCESSING
   const { selectedSummary, previousSummary } = useMemo(() => {
     if (!summariesResponse?.summaries || !selectedMonth) {
       return { selectedSummary: null, previousSummary: null };
@@ -48,7 +54,7 @@ export default function MonthlyView() {
     return { selectedSummary: selected, previousSummary: previous };
   }, [summariesResponse, selectedMonth]);
 
-  // Fetch transactions for selected month
+  // KEEPING ALL YOUR ORIGINAL TRANSACTION FETCHING LOGIC
   const monthForApi = useMemo(() => {
     if (!selectedSummary) return '';
     // Convert "January 2023" to "2023-01"
@@ -73,6 +79,7 @@ export default function MonthlyView() {
     }
   );
 
+  // KEEPING ALL YOUR ORIGINAL ERROR HANDLING
   if (summariesError) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -84,6 +91,7 @@ export default function MonthlyView() {
     );
   }
 
+  // KEEPING ALL YOUR ORIGINAL LOADING STATE
   if (summariesLoading || !summariesResponse || !selectedMonth) {
     return (
       <div className="page-content">
@@ -109,7 +117,7 @@ export default function MonthlyView() {
     );
   }
 
-  // Data is already in the correct order (newest first) for dropdown display
+  // KEEPING YOUR ORIGINAL DROPDOWN OPTIONS PROCESSING
   const availableMonths = summariesResponse.summaries.map(s => ({
     value: s.month_year,
     label: s.month_year
@@ -122,14 +130,19 @@ export default function MonthlyView() {
         title="Monthly Analysis"
         subtitle="Detailed breakdown and transaction analysis"
         actions={
-          <MonthSelector
+          // ONLY CHANGE: Replace MonthSelector with UniversalSelect
+          <UniversalSelect
             options={availableMonths}
             value={selectedMonth}
-            onChange={setSelectedMonth}
+            onChange={(value) => setSelectedMonth(String(value))}
+            placeholder="Select Month"
+            searchable={true}
+            loading={summariesLoading}
           />
         }
       />
 
+      {/* KEEPING ALL YOUR ORIGINAL CONTENT EXACTLY AS IT WAS */}
       {selectedSummary && (
         <>
           {/* Monthly Metrics Row - DESIGN SYSTEM */}

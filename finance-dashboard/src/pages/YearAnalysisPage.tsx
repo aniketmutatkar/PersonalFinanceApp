@@ -1,7 +1,12 @@
-// src/pages/YearAnalysisPage.tsx - PHASE 4.4 CONVERSION - Design System Implementation
+// src/pages/YearAnalysisPage.tsx - PHASE 5.2 MULTI-SELECT STANDARDIZATION
+// UPDATED: YearSelector → UniversalMultiSelect
+
 import React, { useState, useMemo } from 'react';
 import { useYearComparison } from '../hooks/useApiData';
-import YearSelector from '../components/analytics/YearSelector';
+
+// UPDATED: Import universal multi-select instead of YearSelector
+import UniversalMultiSelect from '../components/ui/UniversalMultiSelect';
+
 import YearTrendsChart from '../components/analytics/YearTrendsChart';
 import CategoryHeatmap from '../components/analytics/CategoryHeatmap';
 import YearComparisonPanel from '../components/analytics/YearComparisonPanel';
@@ -41,6 +46,32 @@ export default function YearAnalysisPage() {
     }
   }, [availableYears, selectedYears.length, hasInitialized]);
 
+  // UPDATED: Convert years to options format for UniversalMultiSelect
+  const yearOptions = useMemo(() => {
+    return availableYears.map((year: number) => ({
+      value: year,
+      label: year.toString()
+    }));
+  }, [availableYears]);
+
+  // UPDATED: Quick actions for year selection
+  const quickActions = useMemo(() => [
+    {
+      label: 'Last 2 Years',
+      action: (options: any[]) => {
+        const sorted = options.map(o => o.value).sort((a, b) => b - a);
+        return sorted.slice(0, 2);
+      }
+    },
+    {
+      label: 'Last 3 Years', 
+      action: (options: any[]) => {
+        const sorted = options.map(o => o.value).sort((a, b) => b - a);
+        return sorted.slice(0, 3);
+      }
+    }
+  ], []);
+
   // Calculate summary statistics for selected years
   const summaryStats = useMemo(() => {
     if (!yearComparisonData?.years || selectedYears.length === 0) {
@@ -53,48 +84,40 @@ export default function YearAnalysisPage() {
 
     const validYears = yearsToAnalyze.filter(year => yearComparisonData.years[year]);
 
-    if (validYears.length === 0) return null;
+    if (validYears.length === 0) {
+      return null;
+    }
 
-    // Calculate totals using the correct field names
-    const totalIncome = validYears.reduce((sum, year) => {
-      const yearData = yearComparisonData.years[year];
-      const income = Number(yearData.total_income || 0);
-      return sum + income;
-    }, 0);
+    // Calculate totals and averages
+    let totalIncome = 0;
+    let totalSpending = 0; 
+    let totalInvestments = 0;
 
-    const totalSpending = validYears.reduce((sum, year) => {
+    validYears.forEach(year => {
       const yearData = yearComparisonData.years[year];
-      const spending = Number(yearData.total_spending || 0);
-      return sum + spending;
-    }, 0);
-
-    const totalInvestments = validYears.reduce((sum, year) => {
-      const yearData = yearComparisonData.years[year];
-      const investments = Number(yearData.total_investments || 0);
-      return sum + investments;
-    }, 0);
+      if (yearData) {
+        totalIncome += Number(yearData.total_income) || 0;
+        totalSpending += Math.abs(Number(yearData.total_spending)) || 0;
+        totalInvestments += Number(yearData.total_investments) || 0;
+      }
+    });
 
     const avgIncome = totalIncome / validYears.length;
     const avgSpending = totalSpending / validYears.length;
     const avgInvestments = totalInvestments / validYears.length;
 
-    // Format numbers properly and handle edge cases
-    const formatNumber = (num: number) => {
-      if (!isFinite(num) || isNaN(num)) return 0;
-      return Math.round(num);
-    };
-
+    // Calculate savings rate
     const savingsRate = totalIncome > 0 ? 
       ((totalIncome - totalSpending) / totalIncome) * 100 : 0;
 
     return {
       yearsAnalyzed: validYears.length,
-      totalIncome: formatNumber(totalIncome),
-      totalSpending: formatNumber(totalSpending),
-      totalInvestments: formatNumber(totalInvestments),
-      avgIncome: formatNumber(avgIncome),
-      avgSpending: formatNumber(avgSpending),
-      avgInvestments: formatNumber(avgInvestments),
+      totalIncome: totalIncome,
+      totalSpending: totalSpending,
+      totalInvestments: totalInvestments,
+      avgIncome: avgIncome,
+      avgSpending: avgSpending,
+      avgInvestments: avgInvestments,
       savingsRate: isFinite(savingsRate) ? savingsRate : 0
     };
   }, [yearComparisonData, selectedYears]);
@@ -142,10 +165,19 @@ export default function YearAnalysisPage() {
         title="Year Analysis"
         subtitle="Complete financial trajectory and category evolution insights"
         actions={
-          <YearSelector
-            availableYears={availableYears}
-            selectedYears={selectedYears}
-            onChange={setSelectedYears}
+          // UPDATED: Replaced YearSelector with UniversalMultiSelect
+          <UniversalMultiSelect
+            options={yearOptions}
+            values={selectedYears}
+            onChange={(values) => setSelectedYears(values.map(v => Number(v)))} // FIX: Convert to numbers
+            placeholder="Select Years"
+            showPills={true}
+            maxPillsDisplay={3}
+            quickActions={quickActions}
+            showSelectAll={true}
+            showClearAll={true}
+            sortOrder="desc" // Most recent years first
+            searchable={false} // Years don't need search
           />
         }
       />
