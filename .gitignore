@@ -31,6 +31,11 @@ ENV/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.example
+
+# Development scripts and docs (local only)
+update-network.sh
+NETWORK_SETUP.md
 
 # Configuration files (keep templates, ignore actual config)
 config.yaml
@@ -64,6 +69,7 @@ exports/
 **/*.pdf
 
 # System files
+**/*.DS_Store
 .DS_Store
 .DS_Store?
 ._*
