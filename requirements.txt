@@ -6,10 +6,9 @@ python-Levenshtein
 openpyxl
 sqlalchemy
 plotly
-streamlit
-seaborn
-matplotlib
 fastapi
+uvicorn
+python-dotenv
 PyPDF2 
 pdfplumber 
 pytesseract
