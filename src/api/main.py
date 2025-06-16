@@ -1,4 +1,8 @@
 # src/api/main.py
+"""
+FastAPI main application
+SECURITY UPDATE STEP 4: Removed hardcoded IP addresses for secure deployment
+"""
 
 import os
 from dotenv import load_dotenv
@@ -9,7 +13,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from src.api.utils.error_handling import APIError, api_error_handler
 from src.api.routers import exports
 
-# Get environment
+# Load environment variables
 load_dotenv()
 env = os.getenv("ENVIRONMENT", "development")
 
@@ -35,33 +39,28 @@ app = FastAPI(
     
     ## Frontend Integration
     
-    This API is designed to be consumed by a React frontend. CORS is configured to allow requests from:
-    
-    * Development: http://localhost:3000
-    * Production: https://your-production-domain.com
+    This API is designed to be consumed by a React frontend. CORS is configured for secure development and production deployment.
     """,
     version="1.0.0",
     docs_url=None  # We'll customize the docs URL
 )
 
-# Configure CORS for React frontend
+# Configure CORS - SECURITY UPDATE STEP 4: Removed hardcoded IPs
 if env == "production":
-    # Production CORS settings
+    # Production CORS settings - use relative URLs
     origins = [
         "https://your-production-domain.com",  # Update with your actual domain
         "https://www.your-production-domain.com"
     ]
 else:
-    # Development CORS settings - now using environment variables
-    frontend_host = os.getenv("API_CORS_FRONTEND_HOST", "localhost")
-    frontend_port = os.getenv("API_CORS_FRONTEND_PORT", "3000")
-    mobile_host = os.getenv("API_CORS_MOBILE_HOST", "localhost")
-    
+    # Development CORS settings - localhost-based for security
     origins = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000", 
-        f"http://{frontend_host}:{frontend_port}",  # Your computer
-        f"http://{mobile_host}:3000",  # Your mobile phone
+        "http://localhost:3000",          # React dev server
+        "http://127.0.0.1:3000",         # Alternative localhost
+        "http://localhost:3001",         # Alternative port
+        "http://127.0.0.1:3001",         # Alternative port
+        # REMOVED: Hardcoded IP addresses for security (Step 4)
+        # For mobile development, use ngrok instead
     ]
 
 app.add_middleware(
@@ -90,7 +89,7 @@ async def custom_swagger_ui_html():
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy"}
+    return {"status": "healthy", "environment": env}
 
 # Import routers
 from src.api.routers import transactions, monthly_summary, categories, budgets, statistics, portfolio, financial_metrics
@@ -105,9 +104,11 @@ app.include_router(statistics.router, prefix="/api/statistics", tags=["statistic
 app.include_router(portfolio.router, prefix="/api/portfolio", tags=["portfolio"])
 app.include_router(financial_metrics.router, prefix="/api/financial-metrics", tags=["financial-metrics"])
 
-
 # Startup event
 @app.on_event("startup")
 async def startup_event():
     """Perform startup tasks"""
-    print("Finance Tracker API starting up...")
+    print(f"Finance Tracker API starting up... (Environment: {env})")
+    print("SECURITY: Using localhost-based configuration for enhanced security")
+    if env == "development":
+        print("For mobile development, use ngrok - see MOBILE_DEVELOPMENT.md")

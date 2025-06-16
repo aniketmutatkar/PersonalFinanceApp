@@ -140,6 +140,36 @@ class PortfolioRepository:
         finally:
             session.close()
     
+    def get_latest_balances(self) -> Dict[int, PortfolioBalance]:
+        """
+        Get the latest balance for each account
+        
+        Returns:
+            Dictionary mapping account_id to latest PortfolioBalance
+        """
+        session = get_db_session()
+        
+        try:
+            # Get all accounts
+            accounts = session.query(InvestmentAccountModel).filter(
+                InvestmentAccountModel.is_active == True
+            ).all()
+            
+            latest_balances = {}
+            
+            for account in accounts:
+                # Get the most recent balance for this account
+                latest_balance_model = session.query(PortfolioBalanceModel).filter(
+                    PortfolioBalanceModel.account_id == account.id
+                ).order_by(PortfolioBalanceModel.balance_date.desc()).first()
+                
+                if latest_balance_model:
+                    latest_balances[account.id] = self._map_balance_to_domain(latest_balance_model)
+            
+            return latest_balances
+        finally:
+            session.close()
+
     def _map_account_to_domain(self, model: InvestmentAccountModel) -> InvestmentAccount:
         """Map database model to domain entity"""
         return InvestmentAccount(
