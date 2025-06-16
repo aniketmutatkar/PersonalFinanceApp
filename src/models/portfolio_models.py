@@ -1,7 +1,7 @@
 # src/models/portfolio_models.py
 """
 Portfolio domain models for the Finance Tracker application.
-SECURITY UPDATE: Removed account_number fields to protect sensitive data.
+SECURITY UPDATE STEP 2: Removed raw_extracted_text field to protect sensitive OCR data.
 """
 
 from dataclasses import dataclass, field
@@ -46,7 +46,7 @@ class InvestmentAccount:
 class PortfolioBalance:
     """
     Represents a portfolio balance entry
-    SECURITY UPDATE: Removed account_number field
+    SECURITY UPDATE: Removed account_number field (Step 1)
     """
     account_id: int
     balance_date: date
@@ -96,7 +96,7 @@ class AccountPerformance:
                 setattr(self, field_name, Decimal(str(value)))
 
 
-@dataclass
+@dataclass 
 class InstitutionSummary:
     """Summary of accounts by institution"""
     institution: str
@@ -169,11 +169,12 @@ class PortfolioTrends:
             if not isinstance(value, Decimal):
                 self.growth_attribution[key] = Decimal(str(value))
 
+
 @dataclass
 class StatementUpload:
     """
     Enhanced model for uploaded statements with page detection and OCR processing
-    SECURITY UPDATE: Removed account_number field
+    SECURITY UPDATE STEP 2: Removed raw_extracted_text field for security
     """
     original_filename: str
     file_path: str
@@ -187,8 +188,8 @@ class StatementUpload:
     page_pdf_path: Optional[str] = None  # Path to extracted single page PDF
     total_pages: int = 1
     
-    # OCR extraction fields - WILL BE REMOVED IN STEP 2
-    raw_extracted_text: Optional[str] = None  # TODO: Remove in step 2
+    # OCR extraction fields - SECURITY UPDATE: raw_extracted_text removed
+    # REMOVED: raw_extracted_text field for security (Step 2)
     extracted_balance: Optional[Decimal] = None
     confidence_score: Decimal = Decimal('0.0')
     
@@ -218,17 +219,19 @@ class StatementUpload:
         self.processing_status = 'saved'
         self.reviewed_by_user = True
 
+
 @dataclass
 class BankBalance:
     """
     Represents a bank account balance entry
-    SECURITY UPDATE: Removed account_number field for privacy
+    SECURITY UPDATE: Removed account_number field for privacy (Step 1)
     """
     account_name: str
     statement_month: str  # YYYY-MM format
     beginning_balance: Decimal
     ending_balance: Decimal
     statement_date: date
+    # REMOVED: account_number field for security (Step 1)
     deposits_additions: Optional[Decimal] = None
     withdrawals_subtractions: Optional[Decimal] = None
     data_source: str = 'pdf_statement'
@@ -253,6 +256,7 @@ class BankBalance:
         
         if not isinstance(self.confidence_score, Decimal):
             self.confidence_score = Decimal(str(self.confidence_score))
+
 
 # Account name mapping for transaction integration
 ACCOUNT_TRANSACTION_MAPPING = {

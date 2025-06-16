@@ -843,7 +843,6 @@ async def upload_statement_with_page_detection(
                 relevant_page_number=1,
                 page_pdf_path=None,
                 total_pages=1,  # We don't know yet
-                raw_extracted_text="Filename duplicate - not processed",
                 extracted_balance=None,
                 confidence_score=0.0,
                 processing_status='duplicate',
@@ -910,7 +909,6 @@ async def upload_statement_with_page_detection(
                 total_pages=total_pages,
                 processing_status='failed',
                 processing_error="OCR extraction failed or very low confidence",
-                raw_extracted_text=extracted_text[:1000] if extracted_text else ""
             )
             
             saved_upload = portfolio_repo.save_statement_upload(failed_upload)
@@ -990,7 +988,6 @@ async def upload_statement_with_page_detection(
             relevant_page_number=relevant_page,
             page_pdf_path=single_page_path,
             total_pages=total_pages,
-            raw_extracted_text=extracted_text[:5000],  # Limit size
             extracted_balance=float(statement_data.ending_balance) if statement_data.ending_balance else None,
             confidence_score=overall_confidence,
             processing_status='processed',
