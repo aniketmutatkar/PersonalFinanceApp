@@ -1,4 +1,3 @@
-// src/components/layout/Navigation.tsx - PHASE 1 CONVERSION
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 

@@ -109,11 +109,9 @@ async def get_comprehensive_financial_overview(
         highest_month = max(summaries, key=lambda s: float(s.total_minus_invest))
         lowest_month = min(summaries, key=lambda s: float(s.total_minus_invest))
         
-        # NEW: Calculate financial health metrics
         runway_metrics = financial_metrics_service.calculate_financial_runway()
         net_worth_metrics = financial_metrics_service.calculate_net_worth()
         
-        # NEW: Calculate combined financial stability assessment
         financial_stability = _assess_financial_stability(
             runway_metrics, net_worth_metrics, overall_savings_rate, monthly_cash_flow
         )
@@ -159,7 +157,6 @@ async def get_comprehensive_financial_overview(
                 "alert_flags": alert_flags
             },
             
-            # NEW: Financial health metrics
             "financial_health": {
                 "runway": runway_metrics,
                 "net_worth": net_worth_metrics,
@@ -477,7 +474,6 @@ async def get_year_comparison(
             years[year]["total_investments"] += monthly_investments
             years[year]["months_count"] += 1
             
-            # ADDED: Build category breakdown for CategoryEvolution
             for category, amount in summary.category_totals.items():
                 if category not in exclude_categories:
                     if category not in years[year]["categories"]:
@@ -501,7 +497,6 @@ async def get_year_comparison(
                 # Add months count for CategoryEvolution component
                 year_data["months"] = month_count
         
-        # FIXED: Return the complete response structure
         return {
             "years": years,
             "available_years": sorted(list(years.keys())),

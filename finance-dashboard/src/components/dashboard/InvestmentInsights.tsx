@@ -1,4 +1,3 @@
-// src/components/dashboard/InvestmentInsights.tsx - PHASE 2 CONVERSION
 import React from 'react';
 
 interface InvestmentInsightsProps {

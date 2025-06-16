@@ -210,7 +210,6 @@ class PortfolioRepository:
                 relevant_page_number=statement.relevant_page_number,
                 page_pdf_path=statement.page_pdf_path,
                 total_pages=statement.total_pages,
-                # REMOVED: raw_extracted_text storage for security (Step 2)
                 extracted_balance=float(statement.extracted_balance) if statement.extracted_balance else None,
                 confidence_score=float(statement.confidence_score),
                 requires_review=statement.requires_review,
@@ -260,7 +259,6 @@ class PortfolioRepository:
                 relevant_page_number=model.relevant_page_number or 1,
                 page_pdf_path=model.page_pdf_path,
                 total_pages=model.total_pages or 1,
-                # REMOVED: raw_extracted_text retrieval for security (Step 2)
                 extracted_balance=Decimal(str(model.extracted_balance)) if model.extracted_balance else None,
                 confidence_score=Decimal(str(model.confidence_score)) if model.confidence_score else Decimal('0'),
                 requires_review=model.requires_review or False,
@@ -317,7 +315,6 @@ class PortfolioRepository:
                     relevant_page_number=model.relevant_page_number or 1,
                     page_pdf_path=model.page_pdf_path,
                     total_pages=model.total_pages or 1,
-                    # REMOVED: raw_extracted_text retrieval for security (Step 2)
                     extracted_balance=Decimal(str(model.extracted_balance)) if model.extracted_balance else None,
                     confidence_score=Decimal(str(model.confidence_score)) if model.confidence_score else Decimal('0'),
                     requires_review=model.requires_review or False,

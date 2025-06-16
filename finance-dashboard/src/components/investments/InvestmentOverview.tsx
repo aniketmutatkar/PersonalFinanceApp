@@ -1,4 +1,3 @@
-// src/components/investments/InvestmentOverview.tsx - PHASE 4.6 CONVERSION - Remove Internal Grid
 import React from 'react';
 import { InvestmentOverviewData } from '../../types/api';
 import MetricCard from '../cards/MetricCard';

@@ -1,4 +1,3 @@
-// src/components/dashboard/NetWorthChart.tsx - PHASE 2 CONVERSION
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import ChartContainer from '../charts/ChartContainer';

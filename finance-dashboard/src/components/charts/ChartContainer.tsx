@@ -1,4 +1,3 @@
-// src/components/charts/ChartContainer.tsx - NEW COMPONENT FOR PHASE 2
 import React from 'react';
 
 interface ChartContainerProps {

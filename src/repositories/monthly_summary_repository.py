@@ -305,7 +305,6 @@ class MonthlySummaryRepository:
                     print(f"Skipping invalid month format: {month_period}, Error: {str(e)}")
                     continue
                 
-                print(f"\nProcessing month: {month_year}")
                 print(f"Affected categories: {sorted(affected_categories)}")
                 
                 # Get current monthly summary record if it exists
@@ -349,7 +348,6 @@ class MonthlySummaryRepository:
                 # Calculate totals
                 summary.calculate_totals(categories)
                 
-                # Debug: Print final totals
                 print(f"Summary values for {month_year}:")
                 print(f"  Total: ${float(summary.total):.2f}")
                 print(f"  Investment Total: ${float(summary.investment_total):.2f}")

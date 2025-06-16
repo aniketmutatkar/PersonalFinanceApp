@@ -1,4 +1,3 @@
-// src/components/layout/PageHeader.tsx - NEW COMPONENT FOR PHASE 3
 import React from 'react';
 
 interface PageHeaderProps {

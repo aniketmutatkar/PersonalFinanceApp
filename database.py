@@ -85,7 +85,6 @@ class StatementUploadModel(Base):
     original_filename = Column(String, nullable=False)
     file_path = Column(String, nullable=False)  # Full PDF path
     
-    # NEW: Page detection fields
     relevant_page_number = Column(Integer, default=1)  # Which page has the data
     page_pdf_path = Column(String)  # Path to extracted single page PDF
     total_pages = Column(Integer, default=1)  # Total pages in original PDF
@@ -99,7 +98,6 @@ class StatementUploadModel(Base):
     requires_review = Column(Boolean, default=False)
     reviewed_by_user = Column(Boolean, default=False)
     
-    # NEW: Processing status
     processing_status = Column(String, default='pending')  # 'pending', 'processed', 'failed', 'saved'
     processing_error = Column(String)  # Store any processing errors
     
@@ -310,13 +308,11 @@ def init_database(categories):
     # Add portfolio constraints
     add_portfolio_constraints()
     
-    # NEW: Add bank balance constraints
     add_bank_balance_constraints()
     
     # Add statement uploads enhancements
     add_statement_uploads_enhancements()
     
-    # NEW: Add enhanced duplicate detection constraints
     add_enhanced_duplicate_constraints()
     
     print("Database initialized successfully with enhanced duplicate detection.")

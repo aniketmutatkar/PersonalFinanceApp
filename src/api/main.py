@@ -45,7 +45,6 @@ app = FastAPI(
     docs_url=None  # We'll customize the docs URL
 )
 
-# Configure CORS - SECURITY UPDATE STEP 4: Removed hardcoded IPs
 if env == "production":
     # Production CORS settings - use relative URLs
     origins = [
@@ -59,7 +58,6 @@ else:
         "http://127.0.0.1:3000",         # Alternative localhost
         "http://localhost:3001",         # Alternative port
         "http://127.0.0.1:3001",         # Alternative port
-        # REMOVED: Hardcoded IP addresses for security (Step 4)
         # For mobile development, use ngrok instead
     ]
 

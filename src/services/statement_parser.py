@@ -22,7 +22,6 @@ class StatementData:
     """
     institution: Optional[str] = None
     account_type: Optional[str] = None
-    # REMOVED: account_number field for security
     statement_period_start: Optional[date] = None
     statement_period_end: Optional[date] = None
     beginning_balance: Optional[Decimal] = None
@@ -230,7 +229,6 @@ class StatementParser:
         
         # Account type
         data.account_type = "401(k) Plan"
-        # REMOVED: account_number extraction for security
         
         # Extract statement period from various patterns
         period_patterns = [
@@ -298,7 +296,6 @@ class StatementParser:
         
         # Account type
         data.account_type = "Base Investment Account"
-        # REMOVED: account_number extraction for security
         
         # Extract statement period
         period_patterns = [
@@ -410,7 +407,6 @@ class StatementParser:
         else:
             data.account_type = "Brokerage Account"
         
-        # REMOVED: account_number extraction for security
         
         # Extract statement period
         period_patterns = [
@@ -466,7 +462,6 @@ class StatementParser:
         else:
             data.account_type = "Investment Account"
         
-        # REMOVED: account_number extraction for security
         
         # Extract statement period
         period_patterns = [

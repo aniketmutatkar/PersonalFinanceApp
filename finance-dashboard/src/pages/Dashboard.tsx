@@ -1,4 +1,3 @@
-// src/pages/Dashboard.tsx - PHASE 4.1 FIXED - Design System + Working Data Logic
 import React from 'react';
 import { useFinancialOverview, usePortfolioTrends, useMonthlySummariesChronological, useMonthlySummariesRecent } from '../hooks/useApiData';
 import { Calendar, TrendingUp, Target, PiggyBank } from 'lucide-react';

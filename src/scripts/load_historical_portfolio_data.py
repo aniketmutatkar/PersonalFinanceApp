@@ -58,7 +58,6 @@ class HistoricalDataLoader:
             print(f"❌ Error: File '{file_path}' not found")
             return False
         
-        print(f"📊 Loading historical data from {file_path}...")
         
         try:
             # Read the Excel file
@@ -129,7 +128,6 @@ class HistoricalDataLoader:
                 # Get the date from the first column
                 date_value = row.iloc[0]
                 
-                # Debug: Show what we're processing
                 if idx < 5:  # Show first 5 rows for debugging
                     print(f"📋 Row {idx}: date='{date_value}' (type: {type(date_value)}), first few values: {list(row.iloc[:5])}")
                 
@@ -140,7 +138,6 @@ class HistoricalDataLoader:
                     continue
                 
                 rows_processed += 1
-                print(f"🔄 Processing row {idx}: {date_value}")
                 
                 # Parse the date
                 try:
@@ -320,7 +317,6 @@ class HistoricalDataLoader:
     
     def _show_import_summary(self, balances: List[PortfolioBalance]):
         """Show summary of imported data"""
-        print("\n📊 Import Summary:")
         
         # Group by account
         by_account = {}

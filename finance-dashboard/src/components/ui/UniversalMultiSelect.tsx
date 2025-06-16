@@ -1,5 +1,4 @@
 // src/components/ui/UniversalMultiSelect.tsx
-// PHASE 5.1: STANDARDIZED MULTIPLE SELECTION COMPONENT
 // Replaces: YearSelector, CategorySelector
 
 import React, { useState, useRef, useEffect } from 'react';

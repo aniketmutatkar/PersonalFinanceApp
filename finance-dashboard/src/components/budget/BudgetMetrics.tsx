@@ -1,4 +1,3 @@
-// src/components/budget/BudgetMetrics.tsx - PHASE 4.5 CONVERSION - Remove Internal Grids
 import React, { useMemo } from 'react';
 import MetricCard from '../cards/MetricCard';
 

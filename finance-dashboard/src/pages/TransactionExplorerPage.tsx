@@ -1,4 +1,3 @@
-// src/pages/TransactionExplorerPage.tsx - PHASE 4.3 CONVERSION - Design System Implementation
 import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';

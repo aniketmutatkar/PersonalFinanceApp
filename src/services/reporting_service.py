@@ -98,7 +98,6 @@ class ReportingService:
         if category and not categories:
             categories = [category]
         
-        print(f"Reporting service called with:")
         print(f"  categories={categories}")
         print(f"  description={description}")
         print(f"  start_date={start_date}")
@@ -106,7 +105,6 @@ class ReportingService:
         print(f"  month_str={month_str}")
         print(f"  limit={limit}, offset={offset}")
         
-        # UPDATED: Use the new repository method that returns aggregates
         transactions, total_count, total_sum, avg_amount = self.transaction_repository.find_with_filters(
             categories=categories,
             description=description,
@@ -119,7 +117,6 @@ class ReportingService:
             offset=offset
         )
         
-        print(f"Repository returned {len(transactions)} transactions (total: {total_count})")
         print(f"Aggregates: total_sum={total_sum}, avg_amount={avg_amount}")
         print(f"Aggregate types: total_sum={type(total_sum)}, avg_amount={type(avg_amount)}") 
         
@@ -147,10 +144,8 @@ class ReportingService:
         transactions_df = pd.DataFrame(data)
 
         # Add debug logging to verify the aggregates are in the DataFrame
-        print(f"DataFrame columns: {transactions_df.columns.tolist()}")
         if not transactions_df.empty:
             print(f"Sample row total_sum: {transactions_df.iloc[0]['total_sum']}")
-            print(f"Sample row avg_amount: {transactions_df.iloc[0]['avg_amount']}")
         
         # Format the date column
         if 'date' in transactions_df.columns:
@@ -160,7 +155,6 @@ class ReportingService:
         if 'amount' in transactions_df.columns:
             transactions_df['amount'] = transactions_df['amount'].round(2)
         
-        print(f"Returning DataFrame with {len(transactions_df)} transactions")
         if not transactions_df.empty:
             print(f"Categories found: {sorted(transactions_df['category'].unique())}")
         

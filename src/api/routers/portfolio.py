@@ -188,7 +188,6 @@ class StatementUploadResponse(BaseModel):
     total_pages: int    # NEW: Total pages in PDF
     requires_review: bool
     message: str
-    # NEW: User choice workflow
     can_quick_save: bool
     duplicate_check: Optional[Dict] = None
 
@@ -604,13 +603,10 @@ async def upload_bank_statement(
         
         print(f"📄 Saved bank statement PDF: {full_pdf_path}")
         
-        # Step 1: Extract text with Wells Fargo-specific page detection
         pdf_processor = PDFProcessor()
         
-        # FIXED: Use Wells Fargo specific method instead of generic one
         extracted_text, extraction_confidence, relevant_page, total_pages = pdf_processor.extract_wells_fargo_bank_statement(full_pdf_path)
         
-        print(f"📊 Wells Fargo OCR Results: confidence={extraction_confidence:.2f}, relevant_page={relevant_page}, total_pages={total_pages}")
         
         if not extracted_text or extraction_confidence < 0.2:
             return {
@@ -620,7 +616,6 @@ async def upload_bank_statement(
                 "total_pages": total_pages
             }
         
-        # Step 2: Parse Wells Fargo bank statement
         parser = StatementParser()
         statement_data = parser.parse_statement(extracted_text)
         
@@ -641,7 +636,6 @@ async def upload_bank_statement(
                 "extraction_notes": statement_data.extraction_notes
             }
         
-        # Step 3: Extract deposits and withdrawals from the text for bank balance model
         deposits_amount = None
         withdrawals_amount = None
         
@@ -654,7 +648,6 @@ async def upload_bank_statement(
         if withdrawals_match:
             withdrawals_amount = Decimal(withdrawals_match.group(1).replace(',', ''))
         
-        # Step 4: Create BankBalance object
         statement_date = statement_data.statement_date or statement_data.statement_period_end
 
         if not all([statement_data.beginning_balance, statement_data.ending_balance, statement_date]):
@@ -684,10 +677,8 @@ async def upload_bank_statement(
             notes=f"Auto-extracted from {file.filename}"
         )
 
-        # Step 5: Enhanced duplicate detection
         duplicate_detector = MonthlyDuplicateDetector()
         
-        # Step 6: Save bank balance
         try:
             saved_balance = bank_repo.save(bank_balance, allow_update=False)
         except ValueError as e:
@@ -732,7 +723,6 @@ async def upload_bank_statement(
         
         print(f"💾 Saved bank balance: {saved_balance.account_name} {saved_balance.statement_month}")
         
-        # Step 7: Return success response
         return {
             "success": True,
             "message": "Bank statement processed successfully",
@@ -895,11 +885,9 @@ async def upload_statement_with_page_detection(
                 duplicate_check=filename_check.__dict__
             )
         
-        # Step 1: Extract text with page detection
         pdf_processor = PDFProcessor()
         extracted_text, extraction_confidence, relevant_page, total_pages = pdf_processor.extract_with_page_detection(full_pdf_path)
 
-        print(f"📊 OCR Results: confidence={extraction_confidence:.2f}, relevant_page={relevant_page}, total_pages={total_pages}")
         
         if not extracted_text or extraction_confidence < 0.2:
             # Save failed processing record
@@ -924,7 +912,6 @@ async def upload_statement_with_page_detection(
                 can_quick_save=False
             )
         
-        # Step 2: Extract single page PDF
         single_page_filename = f"page_{relevant_page}_{safe_filename}"
         single_page_path = os.path.join(UPLOAD_BASE_DIR, SINGLE_PAGE_DIR, single_page_filename)
         
@@ -938,14 +925,11 @@ async def upload_statement_with_page_detection(
             print(f"⚠️ Failed to extract single page, will use full PDF for review")
             single_page_path = None
         
-        # Step 3: Parse statement data
         statement_parser = StatementParser()
         statement_data = statement_parser.parse_statement(extracted_text)
         
-        # Step 4: Calculate overall confidence
         overall_confidence = (extraction_confidence + statement_data.confidence_score) / 2
         
-        # Step 5: Enhanced account matching
         account = None
         account_suggestions = []
 
@@ -962,7 +946,6 @@ async def upload_statement_with_page_detection(
                     "match_reason": "institution_partial"
                 })
         
-        # Step 6: Layer 2 - Account + month check (NOW has proper variables)
         monthly_duplicate_check = None
         if (account and statement_data.ending_balance and statement_data.statement_period_end):
             monthly_duplicate_check = duplicate_detector.check_monthly_duplicates(
@@ -979,7 +962,6 @@ async def upload_statement_with_page_detection(
                 recommendation="safe_to_save"
             )
         
-        # Step 7: Save to statement_uploads with error handling
         statement_upload = StatementUpload(
             account_id=account.id if account else None,
             statement_date=statement_data.statement_period_end,
@@ -1031,7 +1013,6 @@ async def upload_statement_with_page_detection(
                 # Other database errors
                 raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
         
-        # Step 8: Prepare response data
         extracted_data = {
             "institution": statement_data.institution,
             "account_type": statement_data.account_type,
@@ -1062,7 +1043,6 @@ async def upload_statement_with_page_detection(
             "extraction_notes": statement_data.extraction_notes or []
         }
         
-        # Step 9: Determine workflow recommendations
         can_quick_save = (
             overall_confidence >= 0.6 and  # Reasonable confidence
             statement_data.ending_balance is not None and  # Has balance

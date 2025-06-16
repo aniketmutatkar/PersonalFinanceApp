@@ -204,7 +204,6 @@ class ImportService:
         for filename in os.listdir(raw_dir):
             if filename.endswith(('.csv', '.CSV')):
                 file_path = os.path.join(raw_dir, filename)
-                print(f"Processing {filename}...")
                 
                 df = self.process_bank_file(file_path)
                 if df is not None:

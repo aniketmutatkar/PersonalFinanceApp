@@ -1,5 +1,4 @@
 // src/components/ui/UniversalToggle.tsx
-// PHASE 5.1: STANDARDIZED TOGGLE/BUTTON GROUP COMPONENT
 // Replaces: BudgetView toggle buttons, chart period selectors, view toggles
 
 import React from 'react';

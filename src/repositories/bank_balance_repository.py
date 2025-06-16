@@ -45,7 +45,6 @@ class BankBalanceRepository:
                 # Insert new balance
                 balance_model = BankBalanceModel(
                     account_name=bank_balance.account_name,
-                    # REMOVED: account_number=None (for security)
                     statement_month=bank_balance.statement_month,
                     beginning_balance=float(bank_balance.beginning_balance),
                     ending_balance=float(bank_balance.ending_balance),
@@ -118,7 +117,6 @@ class BankBalanceRepository:
                     # Insert new balance
                     balance_model = BankBalanceModel(
                         account_name=balance.account_name,
-                        # REMOVED: account_number handling for security
                         statement_month=balance.statement_month,
                         beginning_balance=float(balance.beginning_balance),
                         ending_balance=float(balance.ending_balance),
@@ -151,7 +149,6 @@ class BankBalanceRepository:
         return BankBalance(
             id=model.id,
             account_name=model.account_name,
-            # REMOVED: account_number mapping for security
             statement_month=model.statement_month,
             beginning_balance=Decimal(str(model.beginning_balance)),
             ending_balance=Decimal(str(model.ending_balance)),

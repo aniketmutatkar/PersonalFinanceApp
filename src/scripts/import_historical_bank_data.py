@@ -30,7 +30,6 @@ class HistoricalBankDataImporter:
         
         Expected columns: Month, Beginning, Deposits, Withdrawls (note: missing 'a'), Ending
         """
-        print(f"📊 Loading historical bank data from: {excel_file_path}")
         
         # Read the Excel file
         df = pd.read_excel(excel_file_path)
@@ -183,7 +182,6 @@ def main():
         results = importer.import_from_excel(excel_file_path)
         
         print(f"\n🎉 Import completed!")
-        print(f"   📊 Total rows in Excel: {results['total_rows']}")
         print(f"   ✅ Successfully processed: {results['processed']}")
         print(f"   💾 Inserted into database: {results['inserted']}")
         print(f"   ⏭️  Skipped (duplicates): {results['skipped']}")

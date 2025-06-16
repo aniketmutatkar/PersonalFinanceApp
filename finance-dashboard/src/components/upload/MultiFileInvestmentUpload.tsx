@@ -148,7 +148,6 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
     }
   };
 
-  // NEW: Duplicate warning display component
   const renderDuplicateWarning = (statement: ProcessedStatement) => {
     if (!statement.duplicateInfo) return null;
     
@@ -213,7 +212,6 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
     );
   };
 
-  // NEW: Duplicate action handler
   const handleDuplicateAction = async (statementId: string, action: 'proceed' | 'skip') => {
     if (action === 'skip') {
       setProcessedStatements(prev => prev.map(stmt => 
@@ -320,7 +318,6 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // UPDATED: Status icon function to include new states
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed': return <CheckCircle className="h-5 w-5 text-green-400" />;
@@ -332,7 +329,6 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
     }
   };
 
-  // UPDATED: Processing logic with duplicate detection
   const processAllFiles = async () => {
     setIsProcessing(true);
     setCurrentStep('review');
@@ -371,7 +367,6 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
         if (response.ok) {
           const result = await response.json();
           
-          // UPDATED: Check for duplicate issues in the response
           let finalStatus: 'completed' | 'needs_review' | 'duplicate_warning' = 'completed';
           let duplicateInfo: {
             type: 'filename' | 'monthly';
@@ -643,7 +638,6 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
     </div>
   );
 
-  // UPDATED: Render review step with duplicate handling
   const renderReviewStep = () => (
     <div className="space-y-6">
       <div className="flex items-center justify-between">

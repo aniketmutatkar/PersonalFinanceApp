@@ -1,5 +1,4 @@
 // src/components/ui/UniversalSelect.tsx
-// PHASE 5.1: STANDARDIZED SINGLE SELECTION COMPONENT
 // Replaces: MonthSelector, year dropdowns, period selectors, chart toggles
 
 import React, { useState, useRef, useEffect } from 'react';

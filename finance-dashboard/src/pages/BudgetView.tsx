@@ -1,10 +1,7 @@
-// src/pages/BudgetView.tsx - PHASE 5.1 SELECTOR STANDARDIZATION
-// UPDATED: MonthSelector → UniversalSelect, Toggle buttons → UniversalToggle
 
 import React, { useState, useMemo } from 'react';
 import { useYearlyBudgetAnalysis, useBudgetAnalysis, useMonthlySummaries } from '../hooks/useApiData';
 
-// UPDATED: Import universal selectors instead of MonthSelector
 import UniversalSelect from '../components/ui/UniversalSelect';
 import UniversalToggle from '../components/ui/UniversalToggle';
 
@@ -36,7 +33,6 @@ export default function BudgetView() {
     }));
   }, [summariesResponse]);
 
-  // UPDATED: Convert availableYears to options format for UniversalSelect
   const yearOptions = useMemo(() => {
     return availableYears.map(year => ({
       value: year,
@@ -44,7 +40,6 @@ export default function BudgetView() {
     }));
   }, [availableYears]);
 
-  // UPDATED: Options for view toggle
   const viewToggleOptions = [
     { value: 'yearly', label: 'Yearly View' },
     { value: 'monthly', label: 'Monthly View' }

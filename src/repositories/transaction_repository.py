@@ -94,7 +94,6 @@ class TransactionRepository:
             # Build the WHERE clause
             where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
             
-            # NEW: Get aggregate statistics for ALL filtered transactions
             aggregate_query = text(f"""
             SELECT 
                 COUNT(*) as total_count,

@@ -1,4 +1,3 @@
-// src/components/ui/LoadingSkeleton.tsx - PHASE 1 CONVERSION
 import React from 'react';
 
 interface LoadingSkeletonProps {

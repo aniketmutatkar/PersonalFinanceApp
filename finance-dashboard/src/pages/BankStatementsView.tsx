@@ -1,4 +1,3 @@
-// src/pages/BankStatementsView.tsx - PHASE 4.7 CONVERSION - Design System Implementation
 import React, { useState, useEffect } from 'react';
 import PageHeader from '../components/layout/PageHeader';
 import MetricCard from '../components/cards/MetricCard';

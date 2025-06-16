@@ -36,7 +36,6 @@ interface TooltipProps {
 // KEEPING ALL YOUR EXISTING TOOLTIP CODE
 const CustomTooltip: React.FC<TooltipProps> = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
-    // DEBUG: Log the payload structure to understand what Recharts sends
     console.log('🔧 Tooltip Payload:', payload);
     console.log('🔧 Tooltip Label:', label);
     
@@ -128,13 +127,6 @@ export default function PortfolioValueChart({
   ];
 
   // KEEPING ALL YOUR EXISTING DEBUG AND PROCESSING CODE
-  console.log('📊 Chart Data Received:', data);
-  console.log('📊 Selected Period:', selectedPeriod);
-  console.log('📊 Monthly Values:', data?.monthly_values);
-  console.log('📊 Monthly Values Length:', data?.monthly_values?.length);
-  console.log('📊 Growth Attribution:', data?.growth_attribution);
-  console.log('📊 Data.best_month:', data?.best_month);
-  console.log('📊 Data.worst_month:', data?.worst_month);
   
   if (isLoading) {
     return (
@@ -195,8 +187,6 @@ export default function PortfolioValueChart({
     });
 
   const chartData = sortedMonthlyValues.map(value => {
-    // DEBUG: Log each value to see the structure
-    console.log('📊 Processing value:', value);
     
     const item: any = {
       month_display: value.month_display || `${value.month || 'Unknown'} ${value.year || ''}`,
@@ -215,13 +205,9 @@ export default function PortfolioValueChart({
       });
     }
 
-    console.log('📊 Processed item:', item);
     return item;
   });
 
-  console.log('📊 Final chartData (filtered):', chartData);
-  console.log('📊 Sample chartData item:', chartData[0]);
-  console.log('📊 Latest chartData item:', chartData[chartData.length - 1]);
 
   // Ensure we have valid chart data
   if (chartData.length === 0) {
@@ -253,14 +239,8 @@ export default function PortfolioValueChart({
   const totalGrowth = latestValue - firstValue;
   const chartValueGrowth = totalGrowth;
   
-  // DEBUG: Log the calculation values
-  console.log('📊 Growth Calculation Debug:');
   console.log('  First Value:', firstValue, 'from', chartData[0]?.month_display);
   console.log('  Latest Value:', latestValue, 'from', chartData[chartData.length - 1]?.month_display);
-  console.log('  Chart Value Growth:', chartValueGrowth);
-  console.log('📊 Data.growth_attribution:', data.growth_attribution);
-  console.log('📊 Data.best_month:', data.best_month);
-  console.log('📊 Data.worst_month:', data.worst_month);
 
   return (
     <div className="space-y-6">

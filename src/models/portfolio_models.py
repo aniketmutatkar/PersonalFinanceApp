@@ -188,8 +188,6 @@ class StatementUpload:
     page_pdf_path: Optional[str] = None  # Path to extracted single page PDF
     total_pages: int = 1
     
-    # OCR extraction fields - SECURITY UPDATE: raw_extracted_text removed
-    # REMOVED: raw_extracted_text field for security (Step 2)
     extracted_balance: Optional[Decimal] = None
     confidence_score: Decimal = Decimal('0.0')
     
@@ -231,7 +229,6 @@ class BankBalance:
     beginning_balance: Decimal
     ending_balance: Decimal
     statement_date: date
-    # REMOVED: account_number field for security (Step 1)
     deposits_additions: Optional[Decimal] = None
     withdrawals_subtractions: Optional[Decimal] = None
     data_source: str = 'pdf_statement'

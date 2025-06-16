@@ -306,7 +306,6 @@ class PortfolioService:
         # Market growth = total growth - deposit growth
         market_growth = total_growth - deposit_growth
         
-        print(f"🔧 Growth Attribution Debug:")
         print(f"  Period: {start_date} to {end_date}")
         print(f"  Start Value: ${start_value}")
         print(f"  End Value: ${end_value}")
@@ -341,7 +340,6 @@ class PortfolioService:
             
             print(f"🔧 Found {len(transactions)} investment transactions in period")
             
-            # FIXED: Investment transactions are POSITIVE (money out)
             for tx in transactions:
                 if tx.amount > 0:  # ✅ Investment transactions are positive
                     total_deposits += tx.amount  # ✅ Already positive
@@ -396,7 +394,6 @@ class PortfolioService:
                 
                 category_total = Decimal('0')
                 
-                # FIXED: Investment transactions are POSITIVE (money out = investments)
                 for tx in transactions:
                     if tx.amount > 0:  # ✅ Investment transactions are positive
                         category_total += tx.amount  # ✅ Already positive, no abs() needed

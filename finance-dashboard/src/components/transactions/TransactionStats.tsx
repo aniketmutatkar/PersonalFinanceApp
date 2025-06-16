@@ -1,4 +1,3 @@
-// src/components/transactions/TransactionStats.tsx - PHASE 4.3 CONVERSION - Clean MetricCards
 import React from 'react';
 import { Transaction } from '../../types/api';
 import MetricCard from '../cards/MetricCard';

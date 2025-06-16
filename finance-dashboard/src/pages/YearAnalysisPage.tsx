@@ -1,10 +1,7 @@
-// src/pages/YearAnalysisPage.tsx - PHASE 5.2 MULTI-SELECT STANDARDIZATION
-// UPDATED: YearSelector → UniversalMultiSelect
 
 import React, { useState, useMemo } from 'react';
 import { useYearComparison } from '../hooks/useApiData';
 
-// UPDATED: Import universal multi-select instead of YearSelector
 import UniversalMultiSelect from '../components/ui/UniversalMultiSelect';
 
 import YearTrendsChart from '../components/analytics/YearTrendsChart';
@@ -46,7 +43,6 @@ export default function YearAnalysisPage() {
     }
   }, [availableYears, selectedYears.length, hasInitialized]);
 
-  // UPDATED: Convert years to options format for UniversalMultiSelect
   const yearOptions = useMemo(() => {
     return availableYears.map((year: number) => ({
       value: year,
@@ -54,7 +50,6 @@ export default function YearAnalysisPage() {
     }));
   }, [availableYears]);
 
-  // UPDATED: Quick actions for year selection
   const quickActions = useMemo(() => [
     {
       label: 'Last 2 Years',
@@ -165,7 +160,6 @@ export default function YearAnalysisPage() {
         title="Year Analysis"
         subtitle="Complete financial trajectory and category evolution insights"
         actions={
-          // UPDATED: Replaced YearSelector with UniversalMultiSelect
           <UniversalMultiSelect
             options={yearOptions}
             values={selectedYears}

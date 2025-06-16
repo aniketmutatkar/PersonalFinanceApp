@@ -134,7 +134,6 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // NEW: Conflict resolution UI component
   const renderConflictResolution = (statement: ProcessedStatement) => {
     if (!statement.conflictData) return null;
     
@@ -199,7 +198,6 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
     );
   };
 
-  // NEW: Conflict action handler
   const handleConflictAction = async (statementId: string, action: 'skip' | 'update' | 'review') => {
     const statement = processedStatements.find(s => s.id === statementId);
     if (!statement?.conflictData) return;
@@ -303,7 +301,6 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
         if (response.ok) {
           const result = await response.json();
           
-          // UPDATED: Check if this is a duplicate conflict
           if (result.duplicate_detected) {
             setProcessedStatements(prev => prev.map(stmt => 
               stmt.id === `statement_${i}` 
@@ -427,7 +424,6 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
     setCurrentStep('summary');
   };
 
-  // UPDATED: Status icon function to include conflict states
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed': return <CheckCircle className="h-5 w-5 text-green-400" />;

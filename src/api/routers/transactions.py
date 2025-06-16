@@ -150,7 +150,6 @@ async def get_transactions(
            total_sum = float(transactions_df.iloc[0]['total_sum'])
            avg_amount = float(transactions_df.iloc[0]['avg_amount'])
 
-       print(f"Final API aggregates: total_sum={total_sum}, avg_amount={avg_amount}")
 
        # Calculate total pages
        pages = (int(total_count) + page_size - 1) // page_size if total_count > 0 else 0
@@ -166,8 +165,6 @@ async def get_transactions(
             "avg_amount": float(avg_amount)
         }
 
-       # DEBUG: Print the actual response object
-       print(f"FINAL RESPONSE OBJECT: {response}")
        print(f"Response keys: {list(response.keys())}")
        print(f"Response total_sum type: {type(response['total_sum'])}")
        print(f"Response total_sum value: {response['total_sum']}")
@@ -366,7 +363,6 @@ async def preview_upload(
     all_misc_transactions = []
     files_info = {}
     
-    # NEW: Get existing transaction hashes to check for duplicates
     existing_hashes = transaction_repo.get_existing_hashes()
     
     for file in files:
@@ -402,7 +398,6 @@ async def preview_upload(
                     tx_dict['temp_id'] = str(uuid.uuid4())
                     tx_dict['original_filename'] = original_filename
                     
-                    # NEW: Check if this transaction is a duplicate
                     tx_hash = str(tx_dict['transaction_hash'])
                     tx_dict['is_duplicate'] = tx_hash in existing_hashes
                     
@@ -411,7 +406,6 @@ async def preview_upload(
                 all_transactions.extend(transactions)
                 files_info[original_filename] = len(transactions)
                 
-                # NEW: Extract Misc transactions for review, but ONLY non-duplicates
                 for tx in transactions:
                     if tx.get('Category') == 'Misc' and not tx.get('is_duplicate', False):  # NEW: Skip duplicates
                         try:
@@ -522,7 +516,6 @@ async def confirm_upload(
         )
         transactions_to_save.append(transaction)
         
-        # NEW: Create processed transaction record
         processed_tx = ProcessedTransaction(
             date=tx_date,
             description=str(tx_data['Description']),
@@ -538,7 +531,6 @@ async def confirm_upload(
     # Save all transactions (now returns duplicate hashes)
     records_added, affected_data, duplicate_hashes = transaction_repo.save_many(transactions_to_save)
     
-    # NEW: Mark duplicates in processed transactions
     for processed_tx, original_tx in zip(processed_transactions, transactions_to_save):
         if original_tx.transaction_hash in duplicate_hashes:
             processed_tx.was_duplicate = True
