@@ -673,7 +673,6 @@ async def upload_bank_statement(
 
         bank_balance = BankBalance(
             account_name="Wells Fargo Checking",  # FIXED: Use consistent account name
-            account_number=None,      # FIXED: Don't include account number
             statement_month=statement_month,
             beginning_balance=statement_data.beginning_balance,
             ending_balance=statement_data.ending_balance,
@@ -740,7 +739,6 @@ async def upload_bank_statement(
             "bank_balance": {
                 "id": saved_balance.id, 
                 "account_name": saved_balance.account_name,
-                "account_number": saved_balance.account_number,
                 "statement_month": saved_balance.statement_month,
                 "statement_date": saved_balance.statement_date.isoformat(),
                 "beginning_balance": float(saved_balance.beginning_balance),
@@ -774,7 +772,6 @@ async def get_bank_balances(
                 {
                     "id": balance.id,
                     "account_name": balance.account_name,
-                    "account_number": balance.account_number,
                     "statement_month": balance.statement_month,
                     "beginning_balance": float(balance.beginning_balance),
                     "ending_balance": float(balance.ending_balance),
@@ -1041,7 +1038,6 @@ async def upload_statement_with_page_detection(
         extracted_data = {
             "institution": statement_data.institution,
             "account_type": statement_data.account_type,
-            "account_number": statement_data.account_number,
             "statement_period_start": statement_data.statement_period_start.isoformat() if statement_data.statement_period_start else None,
             "statement_period_end": statement_data.statement_period_end.isoformat() if statement_data.statement_period_end else None,
             "duplicate_checks": {

@@ -1,5 +1,7 @@
+# src/models/portfolio_models.py
 """
 Portfolio domain models for the Finance Tracker application.
+SECURITY UPDATE: Removed account_number fields to protect sensitive data.
 """
 
 from dataclasses import dataclass, field
@@ -42,7 +44,10 @@ class InvestmentAccount:
 
 @dataclass
 class PortfolioBalance:
-    """Represents a portfolio balance entry"""
+    """
+    Represents a portfolio balance entry
+    SECURITY UPDATE: Removed account_number field
+    """
     account_id: int
     balance_date: date
     balance_amount: Decimal
@@ -83,10 +88,8 @@ class AccountPerformance:
     
     def __post_init__(self):
         """Ensure all monetary values are Decimal"""
-        decimal_fields = [
-            'start_balance', 'end_balance', 'net_deposits', 
-            'actual_growth', 'growth_percentage', 'annualized_return'
-        ]
+        decimal_fields = ['start_balance', 'end_balance', 'net_deposits', 'actual_growth', 
+                         'growth_percentage', 'annualized_return']
         for field_name in decimal_fields:
             value = getattr(self, field_name)
             if not isinstance(value, Decimal):
@@ -104,7 +107,7 @@ class InstitutionSummary:
     account_names: List[str] = field(default_factory=list)
     
     def __post_init__(self):
-        """Ensure all monetary values are Decimal"""
+        """Ensure monetary values are Decimal"""
         decimal_fields = ['total_balance', 'total_growth', 'growth_percentage']
         for field_name in decimal_fields:
             value = getattr(self, field_name)
@@ -115,7 +118,7 @@ class InstitutionSummary:
 @dataclass
 class AccountTypeSummary:
     """Summary of accounts by type"""
-    account_type: AccountType
+    account_type: str
     total_balance: Decimal
     total_growth: Decimal
     growth_percentage: Decimal
@@ -123,10 +126,7 @@ class AccountTypeSummary:
     account_names: List[str] = field(default_factory=list)
     
     def __post_init__(self):
-        """Ensure all monetary values are Decimal and account_type is enum"""
-        if isinstance(self.account_type, str):
-            self.account_type = AccountType(self.account_type)
-        
+        """Ensure monetary values are Decimal"""
         decimal_fields = ['total_balance', 'total_growth', 'growth_percentage']
         for field_name in decimal_fields:
             value = getattr(self, field_name)
@@ -171,7 +171,10 @@ class PortfolioTrends:
 
 @dataclass
 class StatementUpload:
-    """Enhanced model for uploaded statements with page detection and OCR processing"""
+    """
+    Enhanced model for uploaded statements with page detection and OCR processing
+    SECURITY UPDATE: Removed account_number field
+    """
     original_filename: str
     file_path: str
     
@@ -179,13 +182,13 @@ class StatementUpload:
     account_id: Optional[int] = None
     statement_date: Optional[date] = None
     
-    # NEW: Page detection fields
+    # Page detection fields
     relevant_page_number: int = 1
     page_pdf_path: Optional[str] = None  # Path to extracted single page PDF
     total_pages: int = 1
     
-    # OCR extraction fields
-    raw_extracted_text: Optional[str] = None
+    # OCR extraction fields - WILL BE REMOVED IN STEP 2
+    raw_extracted_text: Optional[str] = None  # TODO: Remove in step 2
     extracted_balance: Optional[Decimal] = None
     confidence_score: Decimal = Decimal('0.0')
     
@@ -193,73 +196,39 @@ class StatementUpload:
     requires_review: bool = False
     reviewed_by_user: bool = False
     
-    # NEW: Processing status tracking
+    # Processing status tracking
     processing_status: str = "pending"  # 'pending', 'processed', 'failed', 'saved'
     processing_error: Optional[str] = None
     
     # Timestamps
-    id: Optional[int] = None
     upload_timestamp: Optional[date] = None
     processed_timestamp: Optional[date] = None
+    id: Optional[int] = None
     
     def __post_init__(self):
-        """Ensure extracted_balance and confidence_score are Decimal"""
+        """Convert values to proper types"""
         if self.extracted_balance is not None and not isinstance(self.extracted_balance, Decimal):
             self.extracted_balance = Decimal(str(self.extracted_balance))
         
         if not isinstance(self.confidence_score, Decimal):
             self.confidence_score = Decimal(str(self.confidence_score))
     
-    @property
-    def is_processed(self) -> bool:
-        """Check if statement has been successfully processed"""
-        return self.processing_status in ['processed', 'saved']
-    
-    @property
-    def has_errors(self) -> bool:
-        """Check if processing encountered errors"""
-        return self.processing_status == 'failed' or self.processing_error is not None
-    
-    @property
-    def can_quick_save(self) -> bool:
-        """Check if statement can be quick saved (high confidence + all required data)"""
-        return (
-            self.is_processed and
-            self.account_id is not None and
-            self.extracted_balance is not None and
-            self.statement_date is not None and
-            self.confidence_score >= Decimal('0.6')
-        )
-    
-    def mark_as_processed(self, confidence_score: Decimal, extracted_balance: Optional[Decimal] = None):
-        """Mark statement as successfully processed"""
-        self.processing_status = 'processed'
-        self.confidence_score = confidence_score
-        self.processed_timestamp = date.today()
-        
-        if extracted_balance is not None:
-            self.extracted_balance = extracted_balance
-    
-    def mark_as_failed(self, error_message: str):
-        """Mark statement processing as failed"""
-        self.processing_status = 'failed'
-        self.processing_error = error_message
-        self.processed_timestamp = date.today()
-    
     def mark_as_saved(self):
-        """Mark statement as saved to portfolio balances"""
+        """Mark the upload as successfully saved"""
         self.processing_status = 'saved'
         self.reviewed_by_user = True
 
 @dataclass
 class BankBalance:
-    """Represents a bank account balance entry"""
+    """
+    Represents a bank account balance entry
+    SECURITY UPDATE: Removed account_number field for privacy
+    """
     account_name: str
     statement_month: str  # YYYY-MM format
     beginning_balance: Decimal
     ending_balance: Decimal
     statement_date: date
-    account_number: Optional[str] = None
     deposits_additions: Optional[Decimal] = None
     withdrawals_subtractions: Optional[Decimal] = None
     data_source: str = 'pdf_statement'
