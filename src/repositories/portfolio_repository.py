@@ -1,7 +1,7 @@
 # src/repositories/portfolio_repository.py
 
 from typing import List, Dict, Set, Tuple, Optional
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import text
@@ -417,5 +417,20 @@ class PortfolioRepository:
                 processing_status=existing.processing_status or 'pending',
                 account_id=existing.account_id
             )
+        finally:
+            session.close()
+
+    def mark_statement_processed(self, statement_id: int, status: str = 'processed') -> None:
+        """Mark a statement as processed with given status"""
+        session = get_db_session()
+        try:
+            statement = session.query(StatementUploadModel).filter(
+                StatementUploadModel.id == statement_id
+            ).first()
+            
+            if statement:
+                statement.processing_status = status
+                statement.processed_timestamp = datetime.now()
+                session.commit()
         finally:
             session.close()

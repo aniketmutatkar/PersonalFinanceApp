@@ -316,7 +316,10 @@ def init_database(categories):
     # Add statement uploads enhancements
     add_statement_uploads_enhancements()
     
-    print("Database initialized successfully with bank balance support.")
+    # NEW: Add enhanced duplicate detection constraints
+    add_enhanced_duplicate_constraints()
+    
+    print("Database initialized successfully with enhanced duplicate detection.")
 
 def add_portfolio_constraints():
     """Add database constraints for portfolio tables"""
@@ -345,5 +348,43 @@ def add_portfolio_constraints():
     except Exception as e:
         session.rollback()
         print(f"Warning: Could not add constraints: {str(e)}")
+    finally:
+        session.close()
+
+def add_enhanced_duplicate_constraints():
+    """Add enhanced constraints to prevent statement duplicates"""
+    session = get_db_session()
+    try:
+        # Enhanced bank balance constraints - add statement date tracking
+        session.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_bank_balances_statement_date 
+        ON bank_balances(account_name, statement_date)
+        """))
+        
+        # Enhanced portfolio balance constraints - month-level uniqueness
+        session.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_portfolio_balances_month 
+        ON portfolio_balances(account_id, strftime('%Y-%m', balance_date))
+        """))
+        
+        # Statement upload filename protection
+        session.execute(text("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_statement_uploads_filename 
+        ON statement_uploads(original_filename)
+        """))
+        
+        # Statement upload account+month protection for processed statements
+        session.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_statement_uploads_account_month 
+        ON statement_uploads(account_id, strftime('%Y-%m', statement_date))
+        WHERE processing_status IN ('processed', 'saved')
+        """))
+        
+        session.commit()
+        print("Added enhanced duplicate detection constraints and indexes")
+        
+    except Exception as e:
+        session.rollback()
+        print(f"Warning: Could not add enhanced constraints: {str(e)}")
     finally:
         session.close()

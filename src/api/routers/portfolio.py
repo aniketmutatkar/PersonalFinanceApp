@@ -11,7 +11,7 @@ from src.models.portfolio_models import PortfolioBalance, DataSource
 import os
 import re
 import uuid
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -19,11 +19,11 @@ from src.api.dependencies import get_portfolio_service, get_portfolio_repository
 from src.services.portfolio_service import PortfolioService
 from src.repositories.portfolio_repository import PortfolioRepository
 from src.repositories.bank_balance_repository import BankBalanceRepository  # ADD THIS IMPORT
-from src.services.duplicate_detector import MonthlyDuplicateDetector
+from src.services.duplicate_detector import MonthlyDuplicateDetector, DuplicateCheckResult
 from src.models.portfolio_models import StatementUpload, BankBalance, DataSource
 from src.services.pdf_processor import PDFProcessor
 from src.services.statement_parser import StatementParser
-
+from database import get_db_session, StatementUploadModel
 
 router = APIRouter()
 
@@ -577,6 +577,7 @@ def match_account_intelligently(statement_data, all_accounts):
 @router.post("/bank-statements/upload")
 async def upload_bank_statement(
     file: UploadFile = File(...),
+    allow_update: bool = Form(False), 
     bank_repo: BankBalanceRepository = Depends(get_bank_balance_repository)
 ):
     """
@@ -671,7 +672,7 @@ async def upload_bank_statement(
         statement_month = statement_date.strftime("%Y-%m")
 
         bank_balance = BankBalance(
-            account_name="Checking",  # FIXED: Use consistent account name
+            account_name="Wells Fargo Checking",  # FIXED: Use consistent account name
             account_number=None,      # FIXED: Don't include account number
             statement_month=statement_month,
             beginning_balance=statement_data.beginning_balance,
@@ -683,27 +684,52 @@ async def upload_bank_statement(
             confidence_score=Decimal(str(statement_data.confidence_score)),
             notes=f"Auto-extracted from {file.filename}"
         )
-                
-        # Step 5: Check for duplicates
-        existing_balance = bank_repo.get_balance_by_month("Wells Fargo Checking", statement_month)
-        if existing_balance:
-            return {
-                "success": False,
-                "message": f"Bank balance for Wells Fargo Checking {statement_month} already exists",
-                "existing_balance": {
-                    "statement_month": existing_balance.statement_month,
-                    "ending_balance": float(existing_balance.ending_balance),
-                    "data_source": existing_balance.data_source
-                },
-                "extracted_balance": {
-                    "statement_month": statement_month,
-                    "ending_balance": float(statement_data.ending_balance),
-                    "data_source": "pdf_statement"
-                }
-            }
+
+        # Step 5: Enhanced duplicate detection
+        duplicate_detector = MonthlyDuplicateDetector()
         
         # Step 6: Save bank balance
-        saved_balance = bank_repo.save(bank_balance)
+        try:
+            saved_balance = bank_repo.save(bank_balance, allow_update=False)
+        except ValueError as e:
+            # This is a duplicate detection error - handle gracefully
+            if "duplicate" in str(e).lower():
+                # Re-run the duplicate detector to get detailed info
+                duplicate_result = duplicate_detector.check_bank_monthly_duplicates(
+                    "Wells Fargo Checking",
+                    statement_month,
+                    Decimal(str(statement_data.ending_balance)), 
+                    statement_date
+                )
+                
+                # Return structured duplicate response for frontend
+                return {
+                    "success": False,
+                    "duplicate_detected": True,
+                    "conflict_type": duplicate_result.conflict_type,
+                    "message": duplicate_result.message,
+                    "recommendation": duplicate_result.recommendation,
+                    "similarity_percentage": duplicate_result.similarity_percentage,
+                    "existing_balance": duplicate_result.existing_balance,
+                    "extracted_balance": {
+                        "statement_month": statement_month,
+                        "ending_balance": float(statement_data.ending_balance),
+                        "statement_date": statement_date.isoformat(),
+                        "data_source": "pdf_statement",
+                        "confidence_score": float(statement_data.confidence_score)
+                    },
+                    "options": {
+                        "can_skip": duplicate_result.recommendation == "auto_skip",
+                        "can_update": duplicate_result.recommendation in ["suggest_update", "manual_review"],
+                        "requires_review": duplicate_result.recommendation == "manual_review"
+                    }
+                }
+            else:
+                # Other ValueError (validation errors)
+                raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            # Unexpected database errors
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
         
         print(f"💾 Saved bank balance: {saved_balance.account_name} {saved_balance.statement_month}")
         
@@ -800,14 +826,83 @@ async def upload_statement_with_page_detection(
         
         print(f"📄 Saved full PDF: {full_pdf_path}")
         
-        # Check for filename duplicates first
+        # Enhanced duplicate detection - FILENAME CHECK FIRST
         duplicate_detector = MonthlyDuplicateDetector()
+        
+        # Layer 1: Filename check - DO THIS BEFORE OCR PROCESSING
         filename_check = duplicate_detector.check_filename_duplicates(file.filename)
+        
+        # If filename duplicate found, return early (don't waste time on OCR)
+        if filename_check.is_duplicate and filename_check.recommendation != "auto_skip":
+            # Still do minimal processing to get basic info for the user
+            # But save a statement record so PDF viewer works
+            
+            # Create a basic statement upload record for the duplicate
+            duplicate_statement = StatementUpload(
+                account_id=None,  # Unknown account
+                statement_date=None,  # Unknown date
+                original_filename=file.filename,
+                file_path=full_pdf_path,
+                relevant_page_number=1,
+                page_pdf_path=None,
+                total_pages=1,  # We don't know yet
+                raw_extracted_text="Filename duplicate - not processed",
+                extracted_balance=None,
+                confidence_score=0.0,
+                processing_status='duplicate',
+                processing_error=f"Filename duplicate detected: {filename_check.message}"
+            )
+            
+            try:
+                # Try to save - this might fail if constraint already applied
+                saved_duplicate = portfolio_repo.save_statement_upload(duplicate_statement)
+                statement_id_to_return = saved_duplicate.id
+            except Exception as e:
+                if "UNIQUE constraint failed: statement_uploads.original_filename" in str(e):
+                    # The constraint is already working - find the existing record
+                    session = get_db_session()
+                    try:
+                        from database import StatementUploadModel
+                        existing = session.query(StatementUploadModel).filter(
+                            StatementUploadModel.original_filename == file.filename
+                        ).first()
+                        statement_id_to_return = existing.id if existing else 0
+                    finally:
+                        session.close()
+                else:
+                    statement_id_to_return = 0
+            
+            return StatementUploadResponse(
+                statement_id=statement_id_to_return,
+                extracted_data={
+                    "duplicate_checks": {
+                        "filename_duplicate": {
+                            "is_duplicate": True,
+                            "message": filename_check.message,
+                            "recommendation": filename_check.recommendation
+                        },
+                        "monthly_duplicate": {
+                            "is_duplicate": False,
+                            "message": None,
+                            "recommendation": None,
+                            "existing_balance": None,
+                            "similarity_percentage": 0.0
+                        }
+                    }
+                },
+                confidence_score=0.0,
+                relevant_page=1,
+                total_pages=1,
+                requires_review=True,
+                message=f"File '{file.filename}' was already uploaded previously",
+                can_quick_save=False,
+                duplicate_check=filename_check.__dict__
+            )
         
         # Step 1: Extract text with page detection
         pdf_processor = PDFProcessor()
         extracted_text, extraction_confidence, relevant_page, total_pages = pdf_processor.extract_with_page_detection(full_pdf_path)
-        
+
         print(f"📊 OCR Results: confidence={extraction_confidence:.2f}, relevant_page={relevant_page}, total_pages={total_pages}")
         
         if not extracted_text or extraction_confidence < 0.2:
@@ -872,16 +967,24 @@ async def upload_statement_with_page_detection(
                     "match_reason": "institution_partial"
                 })
         
-        # Step 6: Check for duplicates if we have enough data
-        duplicate_check_result = None
-        if account and statement_data.ending_balance and statement_data.statement_period_end:
-            duplicate_check_result = duplicate_detector.check_monthly_duplicates(
+        # Step 6: Layer 2 - Account + month check (NOW has proper variables)
+        monthly_duplicate_check = None
+        if (account and statement_data.ending_balance and statement_data.statement_period_end):
+            monthly_duplicate_check = duplicate_detector.check_monthly_duplicates(
                 account.id,
                 statement_data.statement_period_end,
                 statement_data.ending_balance
             )
+        else:
+            # Create empty result if we can't check
+            monthly_duplicate_check = DuplicateCheckResult(
+                is_duplicate=False,
+                conflict_type="insufficient_data",
+                message="Cannot check monthly duplicates - missing account or date info",
+                recommendation="safe_to_save"
+            )
         
-        # Step 7: Save to statement_uploads
+        # Step 7: Save to statement_uploads with error handling
         statement_upload = StatementUpload(
             account_id=account.id if account else None,
             statement_date=statement_data.statement_period_end,
@@ -897,8 +1000,42 @@ async def upload_statement_with_page_detection(
             processed_timestamp=datetime.now()
         )
         
-        saved_upload = portfolio_repo.save_statement_upload(statement_upload)
-        print(f"💾 Saved statement upload: ID {saved_upload.id}")
+        try:
+            saved_upload = portfolio_repo.save_statement_upload(statement_upload)
+            print(f"💾 Saved statement upload: ID {saved_upload.id}")
+        except Exception as e:
+            # Handle filename duplicate error gracefully
+            if "UNIQUE constraint failed: statement_uploads.original_filename" in str(e):
+                # This is a filename duplicate - return appropriate response
+                return StatementUploadResponse(
+                    statement_id=0,  # No statement saved
+                    extracted_data={
+                        "duplicate_checks": {
+                            "filename_duplicate": {
+                                "is_duplicate": True,
+                                "message": f"File '{file.filename}' was already uploaded previously",
+                                "recommendation": "warn_user"
+                            },
+                            "monthly_duplicate": {
+                                "is_duplicate": False,
+                                "message": None,
+                                "recommendation": None,
+                                "existing_balance": None,
+                                "similarity_percentage": 0.0
+                            }
+                        }
+                    },
+                    confidence_score=overall_confidence,
+                    relevant_page=relevant_page,
+                    total_pages=total_pages,
+                    requires_review=True,
+                    message=f"File '{file.filename}' was already uploaded. Please use a different file or skip this upload.",
+                    can_quick_save=False,
+                    duplicate_check=None
+                )
+            else:
+                # Other database errors
+                raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
         
         # Step 8: Prepare response data
         extracted_data = {
@@ -907,6 +1044,20 @@ async def upload_statement_with_page_detection(
             "account_number": statement_data.account_number,
             "statement_period_start": statement_data.statement_period_start.isoformat() if statement_data.statement_period_start else None,
             "statement_period_end": statement_data.statement_period_end.isoformat() if statement_data.statement_period_end else None,
+            "duplicate_checks": {
+                "filename_duplicate": {
+                    "is_duplicate": filename_check.is_duplicate,
+                    "message": filename_check.message if filename_check.is_duplicate else None,
+                    "recommendation": filename_check.recommendation if filename_check.is_duplicate else None
+                },
+                "monthly_duplicate": {
+                    "is_duplicate": monthly_duplicate_check.is_duplicate if monthly_duplicate_check else False,
+                    "message": monthly_duplicate_check.message if monthly_duplicate_check and monthly_duplicate_check.is_duplicate else None,
+                    "recommendation": monthly_duplicate_check.recommendation if monthly_duplicate_check and monthly_duplicate_check.is_duplicate else None,
+                    "existing_balance": monthly_duplicate_check.existing_balance if monthly_duplicate_check and monthly_duplicate_check.is_duplicate else None,
+                    "similarity_percentage": monthly_duplicate_check.similarity_percentage if monthly_duplicate_check else 0.0
+                }
+            },
             "beginning_balance": float(statement_data.beginning_balance) if statement_data.beginning_balance else None,
             "ending_balance": float(statement_data.ending_balance) if statement_data.ending_balance else None,
             "matched_account": {
@@ -927,12 +1078,11 @@ async def upload_statement_with_page_detection(
         )
         
         requires_review = (
-            overall_confidence < 0.8 or  # Lower confidence needs review
-            not statement_data.ending_balance or  # No balance found
-            not account or  # No account match
-            not statement_data.statement_period_end or  # No date
-            (duplicate_check_result and duplicate_check_result.is_duplicate and 
-             duplicate_check_result.recommendation in ['require_confirmation', 'manual_review'])
+            overall_confidence < 0.7 or 
+            not account or 
+            not statement_data.ending_balance or
+            (filename_check.is_duplicate and filename_check.recommendation != "auto_skip") or
+            (monthly_duplicate_check and monthly_duplicate_check.is_duplicate and monthly_duplicate_check.recommendation != "auto_skip")
         )
         
         # Determine message
@@ -952,7 +1102,7 @@ async def upload_statement_with_page_detection(
             requires_review=requires_review,
             message=message,
             can_quick_save=can_quick_save,
-            duplicate_check=duplicate_check_result.__dict__ if duplicate_check_result else None
+            duplicate_check=monthly_duplicate_check.__dict__ if monthly_duplicate_check else None
         )
         
     except Exception as e:
@@ -1192,3 +1342,57 @@ async def save_reviewed_statement(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error saving reviewed statement: {str(e)}")
+    
+@router.post("/statements/{statement_id}/resolve-conflict")
+async def resolve_statement_conflict(
+    statement_id: int,
+    action: str = Form(...),  # 'proceed', 'skip', 'update'
+    confirm_duplicates: bool = Form(False),
+    portfolio_repo: PortfolioRepository = Depends(get_portfolio_repository)
+):
+    """
+    Handle conflict resolution for investment statement duplicates
+    """
+    try:
+        statement = portfolio_repo.get_statement_upload(statement_id)
+        if not statement:
+            raise HTTPException(status_code=404, detail="Statement not found")
+        
+        if action == 'skip':
+            # Mark as skipped
+            portfolio_repo.mark_statement_processed(statement_id, status='skipped')
+            return {"success": True, "action": "skipped", "message": "Statement upload skipped"}
+        
+        elif action == 'proceed':
+            # Save despite duplicates (if user confirmed)
+            if not statement.account_id or not statement.extracted_balance or not statement.statement_date:
+                raise HTTPException(status_code=400, detail="Insufficient data to proceed")
+            
+            # Create balance entry
+            new_balance = PortfolioBalance(
+                account_id=statement.account_id,
+                balance_date=statement.statement_date,
+                balance_amount=Decimal(str(statement.extracted_balance)),
+                data_source=DataSource.PDF_STATEMENT,
+                confidence_score=Decimal(str(statement.confidence_score)),
+                notes=f"Saved despite duplicates: {statement.original_filename}"
+            )
+            
+            saved_balance = portfolio_repo.save_balance(new_balance)
+            portfolio_repo.mark_statement_processed(statement_id, status='saved')
+            
+            return {
+                "success": True, 
+                "action": "proceeded",
+                "balance": {
+                    "id": saved_balance.id,
+                    "balance_amount": float(saved_balance.balance_amount),
+                    "balance_date": saved_balance.balance_date.isoformat()
+                }
+            }
+        
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error resolving conflict: {str(e)}")

@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { Upload, FileText, Image, CheckCircle, AlertTriangle, X, Eye, Edit, Plus } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { FileText, Image, CheckCircle, AlertTriangle, X, Eye, Edit, Plus } from 'lucide-react';
 import { getApiBaseUrl } from '../../config/api';
 
 // Types for investment upload workflow
@@ -7,7 +7,7 @@ interface ProcessedStatement {
   id: string;
   filename: string;
   fileType: 'pdf' | 'image';
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'duplicate_warning' | 'needs_review' | 'skipped';
   extractedData?: {
     institution?: string;
     account_type?: string;
@@ -25,6 +25,14 @@ interface ProcessedStatement {
   relevant_page?: number;
   total_pages?: number;
   isReviewing?: boolean;
+  duplicateInfo?: {
+    type: 'filename' | 'monthly';
+    message: string;
+    recommendation: string;
+    existing_balance?: any;
+    similarity_percentage?: number;
+  };
+  requiresReview?: boolean;
 }
 
 interface ReviewFormData {
@@ -140,6 +148,107 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
     }
   };
 
+  // NEW: Duplicate warning display component
+  const renderDuplicateWarning = (statement: ProcessedStatement) => {
+    if (!statement.duplicateInfo) return null;
+    
+    const duplicate = statement.duplicateInfo;
+    
+    return (
+      <div className="bg-yellow-900/20 border border-yellow-600 rounded-lg p-3 mt-2">
+        <div className="flex items-start space-x-2">
+          <AlertTriangle className="h-4 w-4 text-yellow-400 mt-0.5" />
+          <div className="flex-1">
+            <h5 className="text-yellow-400 text-sm font-medium">
+              {duplicate.type === 'filename' ? 'Filename Duplicate' : 'Monthly Duplicate'}
+            </h5>
+            <p className="text-gray-300 text-xs mt-1">{duplicate.message}</p>
+            
+            {duplicate.type === 'monthly' && duplicate.existing_balance && (
+              <div className="mt-2 text-xs">
+                <span className="text-gray-400">Existing: </span>
+                <span className="text-white">
+                  ${duplicate.existing_balance.balance_amount?.toLocaleString()} 
+                  ({duplicate.existing_balance.balance_date})
+                </span>
+                {duplicate.similarity_percentage && (
+                  <span className="text-gray-400 ml-2">
+                    ({(duplicate.similarity_percentage * 100).toFixed(1)}% similar)
+                  </span>
+                )}
+              </div>
+            )}
+            
+            <div className="mt-2 text-xs text-yellow-300">
+              Recommendation: {duplicate.recommendation?.replace('_', ' ')}
+            </div>
+            
+            {/* IMPROVED: Better action buttons */}
+            <div className="flex space-x-2 mt-3">
+              <button
+                onClick={() => handleDuplicateAction(statement.id, 'skip')}
+                className="px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm flex items-center gap-1"
+              >
+                <X className="w-3 h-3" />
+                Skip This File
+              </button>
+              
+              <button
+                onClick={() => handleDuplicateAction(statement.id, 'proceed')}
+                className="px-3 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-sm"
+              >
+                Upload Anyway
+              </button>
+              
+              <button
+                onClick={() => startReviewingStatement(statement)}
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm"
+              >
+                Review Details
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // NEW: Duplicate action handler
+  const handleDuplicateAction = async (statementId: string, action: 'proceed' | 'skip') => {
+    if (action === 'skip') {
+      setProcessedStatements(prev => prev.map(stmt => 
+        stmt.id === statementId 
+          ? { ...stmt, status: 'skipped' }
+          : stmt
+      ));
+      
+      // Show user feedback
+      const statement = processedStatements.find(s => s.id === statementId);
+      if (statement) {
+        console.log(`Skipped duplicate file: ${statement.filename}`);
+      }
+    } else if (action === 'proceed') {
+      // Mark as ready to save (remove duplicate warning)
+      setProcessedStatements(prev => prev.map(stmt => 
+        stmt.id === statementId 
+          ? { ...stmt, status: 'completed', duplicateInfo: undefined }
+          : stmt
+      ));
+    }
+  };
+
+  const removeSkippedFiles = () => {
+    setProcessedStatements(prev => prev.filter(stmt => stmt.status !== 'skipped'));
+    
+    // If no files left, go back to upload
+    const remainingFiles = processedStatements.filter(stmt => stmt.status !== 'skipped');
+    if (remainingFiles.length === 0) {
+      setCurrentStep('upload');
+      setSelectedFiles([]);
+      setProcessedStatements([]);
+    }
+  };
+
   // Review functionality - Fixed to match working single upload
   const startReviewingStatement = (statement: ProcessedStatement) => {
     setReviewingStatement(statement);
@@ -163,7 +272,7 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
     setIsReviewSaving(true);
 
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/portfolio/statements/${reviewingStatement.statement_id}/review-save`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/portfolio/statements/${reviewingStatement.statement_id}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -211,7 +320,19 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // Processing logic - Fixed to match your working API
+  // UPDATED: Status icon function to include new states
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed': return <CheckCircle className="h-5 w-5 text-green-400" />;
+      case 'duplicate_warning': return <AlertTriangle className="h-5 w-5 text-yellow-400" />;
+      case 'needs_review': return <AlertTriangle className="h-5 w-5 text-blue-400" />;
+      case 'skipped': return <CheckCircle className="h-5 w-5 text-gray-400" />;
+      case 'failed': return <AlertTriangle className="h-5 w-5 text-red-400" />;
+      default: return <div className="h-5 w-5 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />;
+    }
+  };
+
+  // UPDATED: Processing logic with duplicate detection
   const processAllFiles = async () => {
     setIsProcessing(true);
     setCurrentStep('review');
@@ -250,24 +371,57 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
         if (response.ok) {
           const result = await response.json();
           
-          // Update with successful results - Fixed mapping to match your API response
+          // UPDATED: Check for duplicate issues in the response
+          let finalStatus: 'completed' | 'needs_review' | 'duplicate_warning' = 'completed';
+          let duplicateInfo: {
+            type: 'filename' | 'monthly';
+            message: string;
+            recommendation: string;
+            existing_balance?: any;
+            similarity_percentage?: number;
+          } | undefined = undefined;
+          
+          if (result.extracted_data?.duplicate_checks) {
+            const { filename_duplicate, monthly_duplicate } = result.extracted_data.duplicate_checks;
+            
+            // Check filename duplicate
+            if (filename_duplicate.is_duplicate && filename_duplicate.recommendation !== 'auto_skip') {
+              finalStatus = 'duplicate_warning';
+              duplicateInfo = {
+                type: 'filename' as const,
+                message: filename_duplicate.message,
+                recommendation: filename_duplicate.recommendation
+              };
+            }
+            // Check monthly duplicate (takes priority over filename)
+            else if (monthly_duplicate.is_duplicate && monthly_duplicate.recommendation !== 'auto_skip') {
+              finalStatus = 'duplicate_warning';
+              duplicateInfo = {
+                type: 'monthly' as const,
+                message: monthly_duplicate.message,
+                recommendation: monthly_duplicate.recommendation,
+                existing_balance: monthly_duplicate.existing_balance,
+                similarity_percentage: monthly_duplicate.similarity_percentage
+              };
+            }
+          }
+          
+          // Override with requires_review if needed
+          if (result.requires_review) {
+            finalStatus = 'needs_review';
+          }
+          
           setProcessedStatements(prev => prev.map(stmt => 
             stmt.id === `statement_${i}` 
-              ? { 
-                  ...stmt, 
-                  status: 'completed',
-                  extractedData: {
-                    institution: result.extracted_data?.institution,
-                    account_type: result.extracted_data?.account_type,
-                    ending_balance: result.extracted_data?.ending_balance,
-                    statement_date: result.extracted_data?.statement_date,
-                    statement_period_end: result.extracted_data?.statement_period_end,
-                    confidence_score: result.confidence_score,
-                    matched_account: result.extracted_data?.matched_account
-                  },
+              ? {
+                  ...stmt,
+                  status: finalStatus,
+                  extractedData: result.extracted_data,
                   statement_id: result.statement_id,
                   relevant_page: result.relevant_page,
-                  total_pages: result.total_pages
+                  total_pages: result.total_pages,
+                  duplicateInfo: duplicateInfo,
+                  requiresReview: result.requires_review
                 }
               : stmt
           ));
@@ -489,14 +643,27 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
     </div>
   );
 
-  // Render review step
+  // UPDATED: Render review step with duplicate handling
   const renderReviewStep = () => (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white">Review Extracted Data</h1>
           <p className="text-gray-300">Verify the information extracted from your statements</p>
+          
+          {/* NEW: Breadcrumb with back option */}
+          <div className="flex items-center mt-2 text-sm">
+            <button
+              onClick={() => setCurrentStep('upload')}
+              className="text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              ← Back to Upload
+            </button>
+            <span className="text-gray-400 mx-2">/</span>
+            <span className="text-gray-300">Review Files</span>
+          </div>
         </div>
+        
         {!isProcessing && (
           <button
             onClick={saveAllStatements}
@@ -506,6 +673,28 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
             Quick Save All
           </button>
         )}
+      </div>
+
+      {/* NEW: Files summary */}
+      <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-300">
+            <span className="text-white font-medium">{processedStatements.length}</span> files uploaded • 
+            <span className="text-green-400">{processedStatements.filter(s => s.status === 'completed').length}</span> ready • 
+            <span className="text-yellow-400">{processedStatements.filter(s => s.status === 'duplicate_warning').length}</span> duplicates • 
+            <span className="text-gray-400">{processedStatements.filter(s => s.status === 'skipped').length}</span> skipped
+          </div>
+          
+          {/* NEW: Clear skipped files button */}
+          {processedStatements.some(s => s.status === 'skipped') && (
+            <button
+              onClick={removeSkippedFiles}
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Remove Skipped Files
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -534,6 +723,24 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
                         </span>
                       </>
                     )}
+                    {statement.status === 'duplicate_warning' && (
+                      <>
+                        <AlertTriangle className="w-4 h-4 text-yellow-400" />
+                        <span className="text-yellow-400 text-sm">Duplicate Warning</span>
+                      </>
+                    )}
+                    {statement.status === 'needs_review' && (
+                      <>
+                        <AlertTriangle className="w-4 h-4 text-blue-400" />
+                        <span className="text-blue-400 text-sm">Needs Review</span>
+                      </>
+                    )}
+                    {statement.status === 'skipped' && (
+                      <>
+                        <CheckCircle className="w-4 h-4 text-gray-400" />
+                        <span className="text-gray-400 text-sm">Skipped</span>
+                      </>
+                    )}
                     {statement.status === 'failed' && (
                       <>
                         <AlertTriangle className="w-4 h-4 text-red-400" />
@@ -545,16 +752,17 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
               </div>
 
               {/* Action Buttons */}
-              {statement.status === 'completed' && (
+              {(statement.status === 'completed' || statement.status === 'duplicate_warning' || statement.status === 'needs_review') && (
                 <div className="flex gap-2">
+                  {/* General action buttons */}
                   <button
                     onClick={() => startReviewingStatement(statement)}
                     className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-colors"
                   >
                     <Edit className="w-3 h-3" />
-                    Review
+                    {statement.status === 'duplicate_warning' || statement.status === 'needs_review' ? 'Manual Review' : 'Review'}
                   </button>
-                  {statement.fileType === 'pdf' && (
+                  {statement.fileType === 'pdf' && statement.statement_id && (
                     <button
                       onClick={() => window.open(`${getApiBaseUrl()}/api/portfolio/statements/${statement.statement_id}/page-pdf`, '_blank')}
                       className="flex items-center gap-1 bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-sm transition-colors"
@@ -567,7 +775,10 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
               )}
             </div>
 
-            {statement.status === 'completed' && statement.extractedData && (
+            {/* Show duplicate warning */}
+            {statement.duplicateInfo && renderDuplicateWarning(statement)}
+
+            {(statement.status === 'completed' || statement.status === 'duplicate_warning') && statement.extractedData && (
               <div className="mt-4 grid grid-cols-2 gap-6 pt-4 border-t border-gray-700">
                 <div>
                   <h4 className="text-sm font-medium text-gray-400 mb-2">Extracted Information</h4>
@@ -819,6 +1030,7 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
   const renderSummaryStep = () => {
     const completedCount = processedStatements.filter(s => s.status === 'completed').length;
     const failedCount = processedStatements.filter(s => s.status === 'failed').length;
+    const skippedCount = processedStatements.filter(s => s.status === 'skipped').length;
 
     return (
       <div className="space-y-6">
@@ -830,7 +1042,7 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
 
         <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6">
           <h3 className="text-lg font-bold text-white mb-4">Summary</h3>
-          <div className="grid grid-cols-3 gap-6 text-center">
+          <div className="grid grid-cols-4 gap-6 text-center">
             <div>
               <div className="text-2xl font-bold text-white">{processedStatements.length}</div>
               <div className="text-gray-400 text-sm">Files Uploaded</div>
@@ -840,11 +1052,36 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
               <div className="text-gray-400 text-sm">Successfully Processed</div>
             </div>
             <div>
+              <div className="text-2xl font-bold text-yellow-400">{skippedCount}</div>
+              <div className="text-gray-400 text-sm">Skipped</div>
+            </div>
+            <div>
               <div className="text-2xl font-bold text-red-400">{failedCount}</div>
               <div className="text-gray-400 text-sm">Failed</div>
             </div>
           </div>
         </div>
+
+        {/* NEW: Show skipped files if any */}
+        {skippedCount > 0 && (
+          <div className="bg-yellow-900/20 border border-yellow-600 rounded-lg p-4">
+            <h3 className="text-yellow-400 font-medium mb-2">Skipped Files ({skippedCount})</h3>
+            <div className="space-y-1 text-sm">
+              {processedStatements
+                .filter(s => s.status === 'skipped')
+                .map(statement => (
+                  <div key={statement.id} className="text-gray-300">
+                    • {statement.filename} 
+                    {statement.duplicateInfo && (
+                      <span className="text-yellow-400 ml-2">
+                        ({statement.duplicateInfo.type} duplicate)
+                      </span>
+                    )}
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-center gap-4">
           <button
@@ -861,7 +1098,7 @@ export default function EnhancedMultiFileInvestmentUpload({ onBackToSelect }: In
             }}
             className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
           >
-            Upload More
+            Upload More Files
           </button>
         </div>
       </div>

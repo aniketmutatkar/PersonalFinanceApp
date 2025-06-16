@@ -13,50 +13,78 @@ from database import get_db_session, BankBalanceModel
 class BankBalanceRepository:
     """Repository for bank balance database operations"""
     
-    def save(self, bank_balance: BankBalance) -> BankBalance:
-        """Save or update a bank balance entry"""
+    def save(self, bank_balance: BankBalance, allow_update: bool = False) -> BankBalance:
+        """
+        Save or update a bank balance entry with enhanced duplicate detection
+        
+        Args:
+            bank_balance: The bank balance to save
+            allow_update: Whether to allow updating existing records
+            
+        Returns:
+            The saved bank balance
+            
+        Raises:
+            ValueError: If duplicate exists and allow_update is False
+        """
         session = get_db_session()
         
         try:
-            # Check if balance already exists for this account and month
-            existing = session.query(BankBalanceModel).filter(
-                BankBalanceModel.account_name == bank_balance.account_name,
-                BankBalanceModel.statement_month == bank_balance.statement_month
-            ).first()
+            # Check for existing balance using the duplicate detector
+            from src.services.duplicate_detector import MonthlyDuplicateDetector
             
-            if existing:
-                # Update existing balance
-                existing.beginning_balance = float(bank_balance.beginning_balance)
-                existing.ending_balance = float(bank_balance.ending_balance)
-                existing.deposits_additions = float(bank_balance.deposits_additions) if bank_balance.deposits_additions else None
-                existing.withdrawals_subtractions = float(bank_balance.withdrawals_subtractions) if bank_balance.withdrawals_subtractions else None
-                existing.account_number = bank_balance.account_number
-                existing.statement_date = bank_balance.statement_date
-                existing.data_source = bank_balance.data_source
-                existing.confidence_score = float(bank_balance.confidence_score)
-                existing.notes = bank_balance.notes
+            detector = MonthlyDuplicateDetector()
+            duplicate_result = detector.check_bank_monthly_duplicates(
+                bank_balance.account_name,
+                bank_balance.statement_month,
+                bank_balance.ending_balance,
+                bank_balance.statement_date
+            )
+            
+            if duplicate_result.is_duplicate:
+                if not allow_update:
+                    raise ValueError(f"Duplicate bank balance detected: {duplicate_result.message}")
                 
-                session.commit()
-                bank_balance.id = existing.id
-            else:
-                # Insert new balance
-                balance_model = BankBalanceModel(
-                    account_name=bank_balance.account_name,
-                    account_number=bank_balance.account_number,
-                    statement_month=bank_balance.statement_month,
-                    beginning_balance=float(bank_balance.beginning_balance),
-                    ending_balance=float(bank_balance.ending_balance),
-                    deposits_additions=float(bank_balance.deposits_additions) if bank_balance.deposits_additions else None,
-                    withdrawals_subtractions=float(bank_balance.withdrawals_subtractions) if bank_balance.withdrawals_subtractions else None,
-                    statement_date=bank_balance.statement_date,
-                    data_source=bank_balance.data_source,
-                    confidence_score=float(bank_balance.confidence_score),
-                    notes=bank_balance.notes
-                )
+                # Update existing balance if allowed
+                existing = session.query(BankBalanceModel).filter(
+                    BankBalanceModel.account_name == bank_balance.account_name,
+                    BankBalanceModel.statement_month == bank_balance.statement_month
+                ).first()
                 
-                session.add(balance_model)
-                session.commit()
-                bank_balance.id = balance_model.id
+                if existing:
+                    # Update existing balance
+                    existing.beginning_balance = float(bank_balance.beginning_balance)
+                    existing.ending_balance = float(bank_balance.ending_balance)
+                    existing.deposits_additions = float(bank_balance.deposits_additions) if bank_balance.deposits_additions else None
+                    existing.withdrawals_subtractions = float(bank_balance.withdrawals_subtractions) if bank_balance.withdrawals_subtractions else None
+                    existing.account_number = bank_balance.account_number
+                    existing.statement_date = bank_balance.statement_date
+                    existing.data_source = bank_balance.data_source
+                    existing.confidence_score = float(bank_balance.confidence_score)
+                    existing.notes = bank_balance.notes
+                    
+                    session.commit()
+                    bank_balance.id = existing.id
+                    return bank_balance
+            
+            # Insert new balance (no duplicate found)
+            balance_model = BankBalanceModel(
+                account_name=bank_balance.account_name,
+                account_number=bank_balance.account_number,
+                statement_month=bank_balance.statement_month,
+                beginning_balance=float(bank_balance.beginning_balance),
+                ending_balance=float(bank_balance.ending_balance),
+                deposits_additions=float(bank_balance.deposits_additions) if bank_balance.deposits_additions else None,
+                withdrawals_subtractions=float(bank_balance.withdrawals_subtractions) if bank_balance.withdrawals_subtractions else None,
+                statement_date=bank_balance.statement_date,
+                data_source=bank_balance.data_source,
+                confidence_score=float(bank_balance.confidence_score),
+                notes=bank_balance.notes
+            )
+            
+            session.add(balance_model)
+            session.commit()
+            bank_balance.id = balance_model.id
             
             return bank_balance
             

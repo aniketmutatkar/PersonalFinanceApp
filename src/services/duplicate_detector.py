@@ -6,7 +6,7 @@ from decimal import Decimal
 from sqlalchemy import extract, and_
 from dataclasses import dataclass
 
-from database import get_db_session, PortfolioBalanceModel
+from database import get_db_session, PortfolioBalanceModel, BankBalanceModel
 
 
 @dataclass
@@ -292,6 +292,122 @@ class MonthlyDuplicateDetector:
         finally:
             session.close()
 
+    def check_bank_monthly_duplicates(
+        self, 
+        account_name: str, 
+        statement_month: str,
+        ending_balance: Decimal,
+        statement_date: date,
+        exclude_id: Optional[int] = None
+    ) -> DuplicateCheckResult:
+        """
+        Check for duplicate bank balances in the same month for the same account
+        Uses same logic as investment duplicates but for bank accounts
+        
+        Args:
+            account_name: The bank account name (e.g., "Wells Fargo Checking")
+            statement_month: Month in YYYY-MM format
+            ending_balance: Ending balance amount
+            statement_date: Exact statement date
+            exclude_id: Optional balance ID to exclude from check (for updates)
+            
+        Returns:
+            DuplicateCheckResult with detailed conflict information
+        """
+        session = get_db_session()
+        
+        try:
+            # Build query for same account and month
+            query = session.query(BankBalanceModel).filter(
+                BankBalanceModel.account_name == account_name,
+                BankBalanceModel.statement_month == statement_month
+            )
+            
+            if exclude_id:
+                query = query.filter(BankBalanceModel.id != exclude_id)
+            
+            existing = query.first()
+            
+            if not existing:
+                return DuplicateCheckResult(
+                    is_duplicate=False,
+                    conflict_type="no_conflict",
+                    message="No duplicate found"
+                )
+            
+            # Found existing record - compare details
+            existing_amount = Decimal(str(existing.ending_balance))
+            new_amount = ending_balance
+            
+            # Calculate similarity percentage
+            if existing_amount == 0:
+                similarity_percentage = 1.0 if new_amount == 0 else 0.0
+            else:
+                similarity_percentage = 1.0 - abs(float(new_amount - existing_amount)) / float(existing_amount)
+            
+            # Prepare existing balance info
+            existing_info = {
+                "id": existing.id,
+                "ending_balance": float(existing_amount),
+                "statement_date": existing.statement_date.isoformat(),
+                "statement_month": existing.statement_month,
+                "data_source": existing.data_source,
+                "confidence_score": existing.confidence_score
+            }
+            
+            # Same date - check if amounts are identical or similar
+            if existing.statement_date == statement_date:
+                if abs(existing_amount - new_amount) <= Decimal('0.01'):  # Identical within 1 cent
+                    return DuplicateCheckResult(
+                        is_duplicate=True,
+                        conflict_type="identical_bank_balance",
+                        message=f"Identical bank balance already exists for {statement_date.strftime('%Y-%m-%d')}",
+                        existing_balance=existing_info,
+                        similarity_percentage=1.0,
+                        recommendation="auto_skip"
+                    )
+                else:
+                    return DuplicateCheckResult(
+                        is_duplicate=True,
+                        conflict_type="same_date_different_amount",
+                        message=f"Different amount for same date. Existing: ${existing_amount:,.2f}, New: ${new_amount:,.2f}",
+                        existing_balance=existing_info,
+                        similarity_percentage=similarity_percentage,
+                        recommendation="manual_review"
+                    )
+            
+            # Same month, different dates - analyze similarity
+            else:
+                if similarity_percentage >= 0.99:  # Within 1%
+                    return DuplicateCheckResult(
+                        is_duplicate=True,
+                        conflict_type="similar_bank_balance",
+                        message=f"Very similar balance exists for {existing.statement_date.strftime('%Y-%m-%d')} in same month. Replace ${existing_amount:,.2f} with ${new_amount:,.2f}?",
+                        existing_balance=existing_info,
+                        similarity_percentage=similarity_percentage,
+                        recommendation="suggest_update"
+                    )
+                elif similarity_percentage >= 0.95:  # Within 5%
+                    return DuplicateCheckResult(
+                        is_duplicate=True,
+                        conflict_type="bank_monthly_update",
+                        message=f"Monthly update detected: {existing.statement_date.strftime('%m/%d')} → {statement_date.strftime('%m/%d')}. Replace ${existing_amount:,.2f} with ${new_amount:,.2f}?",
+                        existing_balance=existing_info,
+                        similarity_percentage=similarity_percentage,
+                        recommendation="manual_review"
+                    )
+                else:
+                    return DuplicateCheckResult(
+                        is_duplicate=True,
+                        conflict_type="bank_large_difference",
+                        message=f"Large difference from existing monthly balance. Previous: ${existing_amount:,.2f} ({existing.statement_date.strftime('%m/%d')}), New: ${new_amount:,.2f} ({statement_date.strftime('%m/%d')})",
+                        existing_balance=existing_info,
+                        similarity_percentage=similarity_percentage,
+                        recommendation="manual_review"
+                    )
+        finally:
+            session.close()
+
 
 def check_monthly_duplicates(account_id: int, balance_date: date, balance_amount: Decimal) -> DuplicateCheckResult:
     """
@@ -321,3 +437,19 @@ def check_filename_duplicates(filename: str) -> DuplicateCheckResult:
     """
     detector = MonthlyDuplicateDetector()
     return detector.check_filename_duplicates(filename)
+
+def check_bank_monthly_duplicates(account_name: str, statement_month: str, ending_balance: Decimal, statement_date: date) -> DuplicateCheckResult:
+    """
+    Convenience function to check for bank monthly duplicates
+    
+    Args:
+        account_name: The bank account name
+        statement_month: Month in YYYY-MM format  
+        ending_balance: Ending balance amount
+        statement_date: Exact statement date
+        
+    Returns:
+        DuplicateCheckResult with conflict information
+    """
+    detector = MonthlyDuplicateDetector()
+    return detector.check_bank_monthly_duplicates(account_name, statement_month, ending_balance, statement_date)

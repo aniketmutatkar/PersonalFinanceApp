@@ -1,13 +1,29 @@
 // finance-dashboard/src/components/upload/MultiBankStatementUpload.tsx
-import React, { useState, useCallback, useEffect } from 'react';
-import { Upload, FileText, CheckCircle, AlertTriangle, X, Eye, Edit, Plus, Building2 } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { FileText, CheckCircle, AlertTriangle, X, Edit, Building2 } from 'lucide-react';
 import { getApiBaseUrl } from '../../config/api';
+
+interface ConflictData {
+  success: boolean;
+  duplicate_detected?: boolean;
+  conflict_type?: string;
+  message?: string;
+  recommendation?: 'auto_skip' | 'suggest_update' | 'manual_review';
+  similarity_percentage?: number;
+  existing_balance?: any;
+  extracted_balance?: any;
+  options?: {
+    can_skip: boolean;
+    can_update: boolean;
+    requires_review: boolean;
+  };
+}
 
 interface ProcessedStatement {
   id: string;
   filename: string;
   fileType: 'pdf';
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'conflict' | 'skipped';
   extractedData?: {
     institution?: string;
     account_name?: string;
@@ -23,6 +39,7 @@ interface ProcessedStatement {
   error?: string;
   bank_balance_id?: number;
   isReviewing?: boolean;
+  conflictData?: ConflictData;
 }
 
 interface ReviewFormData {
@@ -77,7 +94,8 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
     setDragActive(false);
     
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFiles(Array.from(e.dataTransfer.files));
+      const newFiles = Array.from(e.dataTransfer.files);
+      handleFiles(newFiles);
     }
   }, []);
 
@@ -116,7 +134,138 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // Processing logic
+  // NEW: Conflict resolution UI component
+  const renderConflictResolution = (statement: ProcessedStatement) => {
+    if (!statement.conflictData) return null;
+    
+    const conflict = statement.conflictData;
+    
+    return (
+      <div className="bg-yellow-900/20 border border-yellow-600 rounded-lg p-4 mt-2">
+        <div className="flex items-start space-x-3">
+          <AlertTriangle className="h-5 w-5 text-yellow-400 mt-0.5" />
+          <div className="flex-1">
+            <h4 className="text-yellow-400 font-medium">Duplicate Detected</h4>
+            <p className="text-gray-300 text-sm mt-1">{conflict.message}</p>
+            
+            {conflict.existing_balance && conflict.extracted_balance && (
+              <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-400">Existing:</span>
+                  <div className="text-white">
+                    ${conflict.existing_balance.ending_balance?.toLocaleString()} 
+                    ({conflict.existing_balance.statement_date})
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-400">New:</span>
+                  <div className="text-white">
+                    ${conflict.extracted_balance.ending_balance?.toLocaleString()} 
+                    ({conflict.extracted_balance.statement_date})
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="flex space-x-2 mt-3">
+              {conflict.options?.can_skip && (
+                <button
+                  onClick={() => handleConflictAction(statement.id, 'skip')}
+                  className="px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded text-sm"
+                >
+                  Skip Upload
+                </button>
+              )}
+              {conflict.options?.can_update && (
+                <button
+                  onClick={() => handleConflictAction(statement.id, 'update')}
+                  className="px-3 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-sm"
+                >
+                  Replace Existing
+                </button>
+              )}
+              {conflict.options?.requires_review && (
+                <button
+                  onClick={() => handleConflictAction(statement.id, 'review')}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm"
+                >
+                  Manual Review
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // NEW: Conflict action handler
+  const handleConflictAction = async (statementId: string, action: 'skip' | 'update' | 'review') => {
+    const statement = processedStatements.find(s => s.id === statementId);
+    if (!statement?.conflictData) return;
+    
+    switch (action) {
+      case 'skip':
+        setProcessedStatements(prev => prev.map(stmt => 
+          stmt.id === statementId 
+            ? { ...stmt, status: 'skipped' }
+            : stmt
+        ));
+        break;
+        
+      case 'update':
+        // Re-upload with allow_update flag
+        const fileIndex = parseInt(statementId.split('_')[1]);
+        const originalFile = selectedFiles[fileIndex];
+        
+        try {
+          const formData = new FormData();
+          formData.append('file', originalFile);
+          formData.append('allow_update', 'true');  // NEW FLAG
+          
+          const response = await fetch(`${getApiBaseUrl()}/api/portfolio/bank-statements/upload`, {
+            method: 'POST',
+            body: formData,
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            setProcessedStatements(prev => prev.map(stmt => 
+              stmt.id === statementId 
+                ? { 
+                    ...stmt, 
+                    status: 'completed', 
+                    conflictData: undefined,
+                    extractedData: {
+                      institution: 'Wells Fargo',
+                      account_name: result.bank_balance?.account_name || 'Checking',
+                      account_number: result.bank_balance?.account_number || null,
+                      statement_month: result.bank_balance?.statement_month || null,
+                      beginning_balance: result.bank_balance?.beginning_balance || null,
+                      ending_balance: result.bank_balance?.ending_balance || null,
+                      deposits_additions: result.bank_balance?.deposits_additions || null,
+                      withdrawals_subtractions: result.bank_balance?.withdrawals_subtractions || null,
+                      confidence_score: result.parsing_confidence || 0,
+                      extraction_notes: result.extraction_notes || []
+                    },
+                    bank_balance_id: result.bank_balance?.id || null
+                  }
+                : stmt
+            ));
+          }
+        } catch (error) {
+          console.error('Update failed:', error);
+        }
+        break;
+        
+      case 'review':
+        // Open manual review (existing functionality)
+        handleReviewStatement(statement);
+        break;
+    }
+  };
+
+  // Processing logic - UPDATED to handle conflict responses
   const processAllFiles = async () => {
     setIsProcessing(true);
     setCurrentStep('review');
@@ -154,28 +303,42 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
         if (response.ok) {
           const result = await response.json();
           
-          // Update with successful results - Handle the actual API response structure
-          setProcessedStatements(prev => prev.map(stmt => 
-            stmt.id === `statement_${i}` 
-              ? { 
-                  ...stmt, 
-                  status: 'completed',
-                  extractedData: {
-                    institution: 'Wells Fargo',
-                    account_name: result.bank_balance?.account_name || 'Checking',
-                    account_number: result.bank_balance?.account_number || null,
-                    statement_month: result.bank_balance?.statement_month || null,
-                    beginning_balance: result.bank_balance?.beginning_balance || null,
-                    ending_balance: result.bank_balance?.ending_balance || null,
-                    deposits_additions: result.bank_balance?.deposits_additions || null,
-                    withdrawals_subtractions: result.bank_balance?.withdrawals_subtractions || null,
-                    confidence_score: result.parsing_confidence || 0,
-                    extraction_notes: result.extraction_notes || []
-                  },
-                  bank_balance_id: result.bank_balance?.id || null
-                }
-              : stmt
-          ));
+          // UPDATED: Check if this is a duplicate conflict
+          if (result.duplicate_detected) {
+            setProcessedStatements(prev => prev.map(stmt => 
+              stmt.id === `statement_${i}` 
+                ? { 
+                    ...stmt, 
+                    status: 'conflict',
+                    conflictData: result,
+                    extractedData: result.extracted_balance
+                  }
+                : stmt
+            ));
+          } else if (result.success) {
+            // Normal success
+            setProcessedStatements(prev => prev.map(stmt => 
+              stmt.id === `statement_${i}` 
+                ? { 
+                    ...stmt, 
+                    status: 'completed',
+                    extractedData: {
+                      institution: 'Wells Fargo',
+                      account_name: result.bank_balance?.account_name || 'Checking',
+                      account_number: result.bank_balance?.account_number || null,
+                      statement_month: result.bank_balance?.statement_month || null,
+                      beginning_balance: result.bank_balance?.beginning_balance || null,
+                      ending_balance: result.bank_balance?.ending_balance || null,
+                      deposits_additions: result.bank_balance?.deposits_additions || null,
+                      withdrawals_subtractions: result.bank_balance?.withdrawals_subtractions || null,
+                      confidence_score: result.parsing_confidence || 0,
+                      extraction_notes: result.extraction_notes || []
+                    },
+                    bank_balance_id: result.bank_balance?.id || null
+                  }
+                : stmt
+            ));
+          }
         } else {
           const errorData = await response.json();
           setProcessedStatements(prev => prev.map(stmt => 
@@ -258,9 +421,21 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
       total_processed: processedStatements.length,
       successful: successfulStatements.length,
       failed: processedStatements.filter(stmt => stmt.status === 'failed').length,
+      skipped: processedStatements.filter(stmt => stmt.status === 'skipped').length,
       statements: successfulStatements
     });
     setCurrentStep('summary');
+  };
+
+  // UPDATED: Status icon function to include conflict states
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed': return <CheckCircle className="h-5 w-5 text-green-400" />;
+      case 'conflict': return <AlertTriangle className="h-5 w-5 text-yellow-400" />;
+      case 'skipped': return <CheckCircle className="h-5 w-5 text-gray-400" />;
+      case 'failed': return <AlertTriangle className="h-5 w-5 text-red-400" />;
+      default: return <div className="h-5 w-5 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />;
+    }
   };
 
   const renderUploadStep = () => (
@@ -387,7 +562,7 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
             onClick={processAllFiles}
             className="flex items-center gap-2 px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
           >
-            <Upload className="w-5 h-5" />
+            <FileText className="w-5 h-5" />
             Process {selectedFiles.length} Statement{selectedFiles.length !== 1 ? 's' : ''}
           </button>
         </div>
@@ -429,9 +604,10 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
                   stmt.status === 'completed' ? 'text-green-400' :
                   stmt.status === 'processing' ? 'text-orange-400' :
                   stmt.status === 'failed' ? 'text-red-400' :
+                  stmt.status === 'conflict' ? 'text-yellow-400' :
                   'text-gray-400'
                 }`}>
-                  {stmt.status.charAt(0).toUpperCase() + stmt.status.slice(1)}
+                  {stmt.status === 'conflict' ? 'Duplicate Found' : stmt.status.charAt(0).toUpperCase() + stmt.status.slice(1)}
                 </span>
               </div>
             ))}
@@ -439,7 +615,7 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
         </div>
       )}
 
-      {/* Processed Statements */}
+      {/* Processed Statements - UPDATED to show conflicts */}
       {!isProcessing && processedStatements.length > 0 && (
         <div className="space-y-4">
           {processedStatements.map((statement) => (
@@ -454,22 +630,25 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
                 </div>
                 
                 <div className="flex items-center gap-2">
-                  {statement.status === 'completed' && (
-                    <>
-                      <CheckCircle className="w-5 h-5 text-green-400" />
-                      <span className="text-green-400 text-sm">Extracted Successfully</span>
-                    </>
-                  )}
-                  {statement.status === 'failed' && (
-                    <>
-                      <AlertTriangle className="w-5 h-5 text-red-400" />
-                      <span className="text-red-400 text-sm">Processing Failed</span>
-                    </>
-                  )}
+                  {getStatusIcon(statement.status)}
+                  <span className={`text-sm ${
+                    statement.status === 'completed' ? 'text-green-400' :
+                    statement.status === 'conflict' ? 'text-yellow-400' :
+                    statement.status === 'skipped' ? 'text-gray-400' :
+                    statement.status === 'failed' ? 'text-red-400' : 'text-gray-400'
+                  }`}>
+                    {statement.status === 'completed' && 'Extracted Successfully'}
+                    {statement.status === 'conflict' && 'Duplicate Detected'}
+                    {statement.status === 'skipped' && 'Skipped'}
+                    {statement.status === 'failed' && 'Processing Failed'}
+                  </span>
                 </div>
               </div>
 
-              {statement.status === 'completed' && statement.extractedData && (
+              {/* NEW: Show conflict resolution if needed */}
+              {statement.status === 'conflict' && renderConflictResolution(statement)}
+
+              {(statement.status === 'completed' || statement.status === 'conflict') && statement.extractedData && (
                 <>
                   {/* Confidence Score */}
                   <div className="mb-4 bg-gray-700/50 rounded-lg p-4">
@@ -508,14 +687,14 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
                     <div className="bg-gray-700/50 rounded-lg p-4">
                       <h4 className="text-sm font-medium text-gray-400 mb-1">Beginning Balance</h4>
                       <p className="text-white font-semibold">
-                        {statement.extractedData.beginning_balance ? `${statement.extractedData.beginning_balance.toLocaleString()}` : 'Not found'}
+                        {statement.extractedData.beginning_balance ? `$${statement.extractedData.beginning_balance.toLocaleString()}` : 'Not found'}
                       </p>
                     </div>
                     
                     <div className="bg-gray-700/50 rounded-lg p-4">
                       <h4 className="text-sm font-medium text-gray-400 mb-1">Ending Balance</h4>
                       <p className="text-green-400 font-semibold">
-                        {statement.extractedData.ending_balance ? `${statement.extractedData.ending_balance.toLocaleString()}` : 'Not found'}
+                        {statement.extractedData.ending_balance ? `$${statement.extractedData.ending_balance.toLocaleString()}` : 'Not found'}
                       </p>
                     </div>
                     
@@ -535,15 +714,17 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => handleReviewStatement(statement)}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-                    >
-                      <Edit className="w-4 h-4" />
-                      Review & Edit
-                    </button>
-                  </div>
+                  {statement.status === 'completed' && (
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => handleReviewStatement(statement)}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                        Review & Edit
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -617,7 +798,7 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
       )}
 
       {/* Summary Cards - Same style as other pages */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
           <h3 className="text-sm font-medium text-gray-400 mb-2">Statements Processed</h3>
           <p className="text-2xl font-bold text-white">{uploadSummary?.total_processed || 0}</p>
@@ -626,6 +807,11 @@ export default function MultiBankStatementUpload({ onBackToSelect }: BankUploadP
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
           <h3 className="text-sm font-medium text-gray-400 mb-2">Successful</h3>
           <p className="text-2xl font-bold text-green-400">{uploadSummary?.successful || 0}</p>
+        </div>
+        
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <h3 className="text-sm font-medium text-gray-400 mb-2">Skipped</h3>
+          <p className="text-2xl font-bold text-yellow-400">{uploadSummary?.skipped || 0}</p>
         </div>
         
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
