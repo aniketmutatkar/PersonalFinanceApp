@@ -6,9 +6,9 @@ SECURITY UPDATE: Removed account number extraction to protect sensitive data
 
 import re
 import logging
-from typing import Dict, List, Optional, Tuple
 from datetime import date, datetime, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
+from typing import Optional, List
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -619,18 +619,3 @@ class StatementParser:
         
         # Calculate weighted average
         return sum(confidence_factors) / len(confidence_factors)
-
-
-# Convenience function for easy importing
-def parse_statement_text(text: str) -> StatementData:
-    """
-    Convenience function to parse statement text
-    
-    Args:
-        text: Raw text extracted from PDF
-        
-    Returns:
-        StatementData with extracted information
-    """
-    parser = StatementParser()
-    return parser.parse_statement(text)

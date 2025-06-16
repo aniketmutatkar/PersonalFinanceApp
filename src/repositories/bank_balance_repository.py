@@ -7,8 +7,6 @@ SECURITY UPDATE: Removed account_number handling to protect sensitive data.
 from typing import List, Optional
 from datetime import date
 from decimal import Decimal
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy import text
 
 from src.models.portfolio_models import BankBalance
 from database import get_db_session, BankBalanceModel
@@ -160,28 +158,3 @@ class BankBalanceRepository:
             notes=model.notes,
             created_at=model.created_at.date() if model.created_at else None
         )
-    
-    def get_balance_by_month(self, account_name: str, statement_month: str) -> Optional[BankBalance]:
-        """Get bank balance for specific account and month (YYYY-MM format)"""
-        session = get_db_session()
-        
-        try:
-            balance_model = session.query(BankBalanceModel).filter(
-                BankBalanceModel.account_name == account_name,
-                BankBalanceModel.statement_month == statement_month
-            ).first()
-            
-            return self._map_to_domain(balance_model) if balance_model else None
-        finally:
-            session.close()
-
-    def get_or_create_account_name(self, institution: str, account_type: str = None) -> str:
-        """Generate consistent account names for bank accounts"""
-        if institution.lower() == 'wells_fargo':
-            return f"Wells Fargo {account_type or 'Checking'}"
-        elif institution.lower() == 'chase':
-            return f"Chase {account_type or 'Checking'}"
-        elif institution.lower() == 'bank_of_america':
-            return f"Bank of America {account_type or 'Checking'}"
-        else:
-            return f"{institution.title()} {account_type or 'Account'}"

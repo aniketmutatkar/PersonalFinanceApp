@@ -3,7 +3,6 @@ Main application entry point for the Finance Tracker.
 """
 
 import os
-from typing import Dict
 
 from database import init_database
 from src.repositories.transaction_repository import TransactionRepository

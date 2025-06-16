@@ -366,13 +366,6 @@ class TransactionRepository:
             raise e
         finally:
             session.close()
-
-    # LEGACY METHODS - Keep for backward compatibility
-    def find_by_month(self, month_str: str) -> List[Transaction]:
-        """Find transactions for a specific month. LEGACY METHOD."""
-        transactions, _ = self.find_with_filters(month_str=month_str, limit=10000)
-        return transactions
-
     def find_by_category(self, category: str) -> List[Transaction]:
         """Find transactions for a specific category. LEGACY METHOD."""
         transactions, _ = self.find_with_filters(categories=[category], limit=10000)
@@ -404,16 +397,6 @@ class TransactionRepository:
             return self._create_transaction_from_row(result)
         finally:
             session.close()
-
-    def find_by_date_range(self, start_date: date, end_date: date) -> List[Transaction]:
-        """Find transactions within a date range. LEGACY METHOD."""
-        transactions, _ = self.find_with_filters(
-            start_date=start_date, 
-            end_date=end_date, 
-            limit=10000
-        )
-        return transactions
-
     def get_existing_hashes(self) -> List[str]:
         """
         Get all existing transaction hashes.
@@ -432,8 +415,3 @@ class TransactionRepository:
             return [row[0] for row in result]
         finally:
             session.close()
-
-    def find_all_transactions(self, limit: int = 10000) -> List[Transaction]:
-        """Find all transactions, with optional limit. LEGACY METHOD."""
-        transactions, _ = self.find_with_filters(limit=limit)
-        return transactions

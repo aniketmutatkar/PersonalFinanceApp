@@ -9,7 +9,6 @@ import os
 import tempfile
 import logging
 from typing import Tuple, Optional, Dict
-from decimal import Decimal
 from datetime import date
 import re
 
@@ -537,61 +536,3 @@ class PDFProcessor:
         final_confidence = base_confidence * method_multipliers.get(method, 0.5)
         
         return min(final_confidence, 1.0)  # Cap at 1.0
-    
-    def get_pdf_metadata(self, pdf_path: str) -> dict:
-        """
-        Extract metadata from PDF file
-        
-        Args:
-            pdf_path: Path to PDF file
-            
-        Returns:
-            Dictionary with PDF metadata
-        """
-        try:
-            with pdfplumber.open(pdf_path) as pdf:
-                metadata = pdf.metadata or {}
-                
-                return {
-                    "page_count": len(pdf.pages),
-                    "title": metadata.get("Title", ""),
-                    "author": metadata.get("Author", ""),
-                    "subject": metadata.get("Subject", ""),
-                    "creator": metadata.get("Creator", ""),
-                    "producer": metadata.get("Producer", ""),
-                    "creation_date": metadata.get("CreationDate", ""),
-                    "modification_date": metadata.get("ModDate", ""),
-                }
-                
-        except Exception as e:
-            logger.error(f"Error extracting PDF metadata: {str(e)}")
-            return {"page_count": 0, "error": str(e)}
-
-
-# Convenience function for easy importing
-def extract_text_from_pdf(pdf_path: str) -> Tuple[str, float]:
-    """
-    Convenience function to extract text from PDF
-    
-    Args:
-        pdf_path: Path to PDF file
-        
-    Returns:
-        Tuple of (extracted_text, confidence_score)
-    """
-    processor = PDFProcessor()
-    return processor.extract_text(pdf_path)
-
-# Convenience function for easy importing
-def extract_text_with_page_detection(pdf_path: str) -> Tuple[str, float, int, int]:
-    """
-    Convenience function to extract text with page detection
-    
-    Args:
-        pdf_path: Path to PDF file
-        
-    Returns:
-        Tuple of (extracted_text, confidence_score, relevant_page, total_pages)
-    """
-    processor = PDFProcessor()
-    return processor.extract_with_page_detection(pdf_path)

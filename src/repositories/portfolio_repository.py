@@ -7,7 +7,6 @@ SECURITY UPDATE STEP 2: Removed raw_extracted_text handling to protect sensitive
 from typing import List, Dict, Set, Tuple, Optional
 from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy import text
 
 from src.models.portfolio_models import (
@@ -124,22 +123,6 @@ class PortfolioRepository:
             raise e
         finally:
             session.close()
-    
-    def get_date_range(self) -> Tuple[Optional[date], Optional[date]]:
-        """Get the date range of all portfolio balances"""
-        session = get_db_session()
-        
-        try:
-            result = session.query(
-                text("MIN(balance_date) as min_date, MAX(balance_date) as max_date")
-            ).from_statement(
-                text("SELECT MIN(balance_date) as min_date, MAX(balance_date) as max_date FROM portfolio_balances")
-            ).first()
-            
-            return result.min_date, result.max_date
-        finally:
-            session.close()
-    
     def get_latest_balances(self) -> Dict[int, PortfolioBalance]:
         """
         Get the latest balance for each account
@@ -286,111 +269,6 @@ class PortfolioRepository:
                     statement.processing_status = 'saved'
                 session.commit()
                 
-        except Exception as e:
-            session.rollback()
-            raise e
-        finally:
-            session.close()
-    
-    def get_all_statement_uploads(self, limit: int = 100) -> List[StatementUpload]:
-        """
-        Get all statement uploads
-        SECURITY UPDATE STEP 2: No longer retrieves raw_extracted_text
-        """
-        session = get_db_session()
-        
-        try:
-            models = session.query(StatementUploadModel).order_by(
-                StatementUploadModel.upload_timestamp.desc()
-            ).limit(limit).all()
-            
-            uploads = []
-            for model in models:
-                upload = StatementUpload(
-                    id=model.id,
-                    account_id=model.account_id,
-                    statement_date=model.statement_date,
-                    original_filename=model.original_filename,
-                    file_path=model.file_path,
-                    relevant_page_number=model.relevant_page_number or 1,
-                    page_pdf_path=model.page_pdf_path,
-                    total_pages=model.total_pages or 1,
-                    extracted_balance=Decimal(str(model.extracted_balance)) if model.extracted_balance else None,
-                    confidence_score=Decimal(str(model.confidence_score)) if model.confidence_score else Decimal('0'),
-                    requires_review=model.requires_review or False,
-                    reviewed_by_user=model.reviewed_by_user or False,
-                    processing_status=model.processing_status or 'pending',
-                    processing_error=model.processing_error,
-                    upload_timestamp=model.upload_timestamp.date() if model.upload_timestamp else None,
-                    processed_timestamp=model.processed_timestamp.date() if model.processed_timestamp else None
-                )
-                uploads.append(upload)
-            
-            return uploads
-        finally:
-            session.close()
-    
-    def delete_statement_upload(self, statement_id: int) -> bool:
-        """Delete a statement upload record"""
-        session = get_db_session()
-        
-        try:
-            statement = session.query(StatementUploadModel).filter(
-                StatementUploadModel.id == statement_id
-            ).first()
-            
-            if statement:
-                session.delete(statement)
-                session.commit()
-                return True
-            return False
-            
-        except Exception as e:
-            session.rollback()
-            raise e
-        finally:
-            session.close()
-    
-    def bulk_save_balances(self, balances: List[PortfolioBalance]) -> int:
-        """Bulk save portfolio balances, skipping duplicates"""
-        if not balances:
-            return 0
-        
-        session = get_db_session()
-        records_inserted = 0
-        
-        try:
-            for balance in balances:
-                try:
-                    # Check if balance already exists for this account and date
-                    existing = session.query(PortfolioBalanceModel).filter(
-                        PortfolioBalanceModel.account_id == balance.account_id,
-                        PortfolioBalanceModel.balance_date == balance.balance_date
-                    ).first()
-                    
-                    if existing:
-                        continue  # Skip duplicate
-                    
-                    # Insert new balance
-                    balance_model = PortfolioBalanceModel(
-                        account_id=balance.account_id,
-                        balance_date=balance.balance_date,
-                        balance_amount=float(balance.balance_amount),
-                        data_source=balance.data_source.value,
-                        confidence_score=float(balance.confidence_score),
-                        notes=balance.notes
-                    )
-                    
-                    session.add(balance_model)
-                    records_inserted += 1
-                    
-                except Exception as e:
-                    print(f"Error inserting balance for account {balance.account_id}: {e}")
-                    continue
-            
-            session.commit()
-            return records_inserted
-            
         except Exception as e:
             session.rollback()
             raise e

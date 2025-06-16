@@ -239,59 +239,6 @@ class MonthlyDuplicateDetector:
             )
         finally:
             session.close()
-    
-    def get_monthly_summary(self, account_id: int, year: int, month: int) -> Dict:
-        """
-        Get summary of all balances for a specific month
-        
-        Args:
-            account_id: Account to check
-            year: Year to check
-            month: Month to check (1-12)
-            
-        Returns:
-            Dictionary with monthly balance summary
-        """
-        session = get_db_session()
-        
-        try:
-            balances = session.query(PortfolioBalanceModel).filter(
-                and_(
-                    PortfolioBalanceModel.account_id == account_id,
-                    extract('year', PortfolioBalanceModel.balance_date) == year,
-                    extract('month', PortfolioBalanceModel.balance_date) == month
-                )
-            ).order_by(PortfolioBalanceModel.balance_date).all()
-            
-            if not balances:
-                return {"count": 0, "balances": []}
-            
-            balance_list = []
-            for balance in balances:
-                balance_list.append({
-                    "id": balance.id,
-                    "date": balance.balance_date.isoformat(),
-                    "amount": float(balance.balance_amount),
-                    "source": balance.data_source,
-                    "notes": balance.notes
-                })
-            
-            return {
-                "count": len(balances),
-                "balances": balance_list,
-                "latest_amount": float(balances[-1].balance_amount),
-                "latest_date": balances[-1].balance_date.isoformat(),
-                "date_range": {
-                    "start": balances[0].balance_date.isoformat(),
-                    "end": balances[-1].balance_date.isoformat()
-                }
-            }
-            
-        except Exception as e:
-            return {"error": str(e), "count": 0, "balances": []}
-        finally:
-            session.close()
-
     def check_bank_monthly_duplicates(
         self, 
         account_name: str, 
