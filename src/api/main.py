@@ -107,6 +107,3 @@ app.include_router(financial_metrics.router, prefix="/api/financial-metrics", ta
 async def startup_event():
     """Perform startup tasks"""
     print(f"Finance Tracker API starting up... (Environment: {env})")
-    print("SECURITY: Using localhost-based configuration for enhanced security")
-    if env == "development":
-        print("For mobile development, use ngrok - see MOBILE_DEVELOPMENT.md")
