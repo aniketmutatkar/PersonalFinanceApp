@@ -36,6 +36,7 @@ ENV/
 # Development scripts and docs (local only)
 update-network.sh
 NETWORK_SETUP.md
+start-finance
 
 # Configuration files (keep templates, ignore actual config)
 config.yaml
