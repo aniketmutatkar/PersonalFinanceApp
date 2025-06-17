@@ -648,7 +648,7 @@ async def upload_bank_statement(
         if withdrawals_match:
             withdrawals_amount = Decimal(withdrawals_match.group(1).replace(',', ''))
         
-        statement_date = statement_data.statement_date or statement_data.statement_period_end
+        statement_date = statement_data.statement_period_end
 
         if not all([statement_data.beginning_balance, statement_data.ending_balance, statement_date]):
             return {
@@ -680,7 +680,7 @@ async def upload_bank_statement(
         duplicate_detector = MonthlyDuplicateDetector()
         
         try:
-            saved_balance = bank_repo.save(bank_balance, allow_update=False)
+            saved_balance = bank_repo.save(bank_balance)
         except ValueError as e:
             # This is a duplicate detection error - handle gracefully
             if "duplicate" in str(e).lower():
