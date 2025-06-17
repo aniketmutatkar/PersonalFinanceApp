@@ -1,5 +1,5 @@
 // src/components/transactions/TransactionFilters.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Filter, Search, ChevronRight, X } from 'lucide-react';
 
 interface Filters {
@@ -77,6 +77,48 @@ export default function TransactionFilters({
   const [isExpanded, setIsExpanded] = useState(true);
   const [monthInput, setMonthInput] = useState(filters.month || '');
   const [monthError, setMonthError] = useState<string>('');
+  
+  // LOCAL STATE FOR SEARCH INPUT - This is the key fix
+  const [searchInput, setSearchInput] = useState(filters.description);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync local search input with external filter changes (but don't create infinite loops)
+  useEffect(() => {
+    // Only update if the external value is different from our local state
+    // This prevents the input from being reset while the user is typing
+    if (filters.description !== searchInput && document.activeElement?.tagName !== 'INPUT') {
+      setSearchInput(filters.description);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.description]); // Only depend on filters.description to prevent infinite loops
+
+  // IMPROVED DEBOUNCED SEARCH HANDLER - Completely isolated from parent re-renders
+  const handleSearchInputChange = useCallback((value: string) => {
+    // Update local state immediately for responsive typing
+    setSearchInput(value);
+    
+    // Clear existing timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    
+    // Set new timeout to update filters after user stops typing
+    debounceTimeoutRef.current = setTimeout(() => {
+      // Only call parent if value actually changed
+      if (value !== filters.description) {
+        onFiltersChange({ description: value, page: 1 });
+      }
+    }, 300); // 300ms delay
+  }, [filters.description, onFiltersChange]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Handle month input change
   const handleMonthChange = (value: string) => {
@@ -97,6 +139,25 @@ export default function TransactionFilters({
     }
   };
 
+  // Handle category toggle
+  const handleCategoryToggle = (categoryName: string) => {
+    const isSelected = filters.categories.includes(categoryName);
+    const newCategories = isSelected
+      ? filters.categories.filter(cat => cat !== categoryName)
+      : [...filters.categories, categoryName];
+    
+    onFiltersChange({ categories: newCategories, page: 1 });
+  };
+
+  // Clear search with proper state management
+  const handleClearSearch = useCallback(() => {
+    setSearchInput('');
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    onFiltersChange({ description: '' });
+  }, [onFiltersChange]);
+
   // Sidebar variant - compact version
   if (variant === 'sidebar') {
     return (
@@ -110,15 +171,17 @@ export default function TransactionFilters({
             <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-500" />
             <input
               type="text"
-              value={filters.description}
-              onChange={(e) => onFiltersChange({ description: e.target.value })}
+              value={searchInput} // Use local state
+              onChange={(e) => handleSearchInputChange(e.target.value)} // Use debounced handler
               placeholder="Search descriptions..."
               className="w-full pl-8 pr-3 py-2 text-sm bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+              autoComplete="off" // Prevent browser autocomplete from interfering
             />
-            {filters.description && (
+            {searchInput && ( // Check local state for button visibility
               <button
-                onClick={() => onFiltersChange({ description: '' })}
+                onClick={handleClearSearch} // Use proper clear handler
                 className="absolute right-2.5 top-2.5 text-gray-500 hover:text-gray-300"
+                type="button" // Prevent form submission
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -126,116 +189,65 @@ export default function TransactionFilters({
           </div>
         </div>
 
-        {/* Categories */}
+        {/* Categories - Compact Multi-Select */}
         <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="block text-xs font-medium text-gray-300">
-              Categories
-            </label>
-            {filters.categories.length > 0 && (
-              <button
-                onClick={() => onFiltersChange({ categories: [] })}
-                className="text-xs text-blue-400 hover:text-blue-300"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-          
-          {/* Selected Categories Pills */}
-          {filters.categories.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-2">
-              {filters.categories.map((category) => (
-                <span
-                  key={category}
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-600 text-white text-xs rounded-full"
-                >
-                  {category}
-                  <button
-                    onClick={() => onFiltersChange({
-                      categories: filters.categories.filter(c => c !== category)
-                    })}
-                    className="hover:text-blue-200"
-                  >
-                    <X className="w-2.5 h-2.5" />
-                  </button>
-                </span>
+          <label className="block text-xs font-medium text-gray-300 mb-1.5">
+            Categories ({filters.categories.length})
+          </label>
+          <div className="space-y-1.5">
+            {categories
+              .filter(cat => !cat.is_income && !cat.is_payment && !cat.is_investment)
+              .map(category => (
+                <label key={category.name} className="flex items-center text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filters.categories.includes(category.name)}
+                    onChange={() => handleCategoryToggle(category.name)}
+                    className="w-3 h-3 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-1 mr-2"
+                  />
+                  <span className="text-gray-300 hover:text-white truncate">
+                    {category.name}
+                  </span>
+                </label>
               ))}
-            </div>
-          )}
-          
-          {/* Category List - Remove scroll, show all categories */}
-          <div className="space-y-0.5">
-            {categories.map((category) => (
-              <label key={category.name} className="flex items-center gap-2 p-1 rounded hover:bg-gray-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={filters.categories.includes(category.name)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      onFiltersChange({
-                        categories: [...filters.categories, category.name]
-                      });
-                    } else {
-                      onFiltersChange({
-                        categories: filters.categories.filter(c => c !== category.name)
-                      });
-                    }
-                  }}
-                  className="rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-0"
-                />
-                <span className="text-xs text-gray-300">{category.name}</span>
-              </label>
-            ))}
           </div>
         </div>
 
-        {/* Date Filters - More compact */}
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-300 mb-1.5">
-              Month
-            </label>
-            <input
-              type="text"
-              value={monthInput}
-              onChange={(e) => handleMonthChange(e.target.value)}
-              placeholder="Jan 2024 or 2024-01"
-              className={`w-full px-2.5 py-1.5 text-xs bg-gray-700 border rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent ${
-                monthError ? 'border-red-500' : 'border-gray-600'
-              }`}
-            />
-            {monthError && (
-              <p className="text-xs text-red-400 mt-1">{monthError}</p>
-            )}
-            {monthInput && !monthError && parseMonthInput(monthInput) && (
-              <p className="text-xs text-green-400 mt-1">
-                ✓ {parseMonthInput(monthInput)}
-              </p>
-            )}
-          </div>
-          
-          <div>
-            <label className="block text-xs font-medium text-gray-300 mb-1.5">
-              Start Date
-            </label>
+        {/* Month Filter */}
+        <div>
+          <label className="block text-xs font-medium text-gray-300 mb-1.5">
+            Month
+          </label>
+          <input
+            type="text"
+            value={monthInput}
+            onChange={(e) => handleMonthChange(e.target.value)}
+            placeholder="e.g., Jan 2024, 2024-01"
+            className="w-full px-3 py-2 text-sm bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+            autoComplete="off"
+          />
+          {monthError && (
+            <p className="mt-1 text-xs text-red-400">{monthError}</p>
+          )}
+        </div>
+
+        {/* Date Range */}
+        <div>
+          <label className="block text-xs font-medium text-gray-300 mb-1.5">
+            Date Range
+          </label>
+          <div className="space-y-1.5">
             <input
               type="date"
               value={filters.startDate}
               onChange={(e) => onFiltersChange({ startDate: e.target.value })}
-              className="w-full px-2.5 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-2.5 py-1.5 text-sm bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
             />
-          </div>
-          
-          <div>
-            <label className="block text-xs font-medium text-gray-300 mb-1.5">
-              End Date
-            </label>
             <input
               type="date"
               value={filters.endDate}
               onChange={(e) => onFiltersChange({ endDate: e.target.value })}
-              className="w-full px-2.5 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-2.5 py-1.5 text-sm bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
         </div>
@@ -243,20 +255,19 @@ export default function TransactionFilters({
     );
   }
 
-  // Original horizontal variant (unchanged for backwards compatibility)
+  // Default horizontal variant - remains mostly the same but with debounced search
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg mb-6">
-      {/* Filter Header */}
-      <div className="p-4 border-b border-gray-700">
+    <div className="card-standard">
+      <div className="flex items-center">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center justify-between w-full text-left"
+          className="flex items-center w-full"
         >
-          <div className="flex items-center gap-2">
-            <Filter className="w-5 h-5 text-blue-400" />
-            <span className="font-medium text-white">Filters</span>
-          </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-3">
+              <Filter className="w-5 h-5 text-blue-400" />
+              <span className="font-medium text-white">Transaction Filters</span>
+            </div>
             {(filters.categories.length > 0 || filters.description || filters.month) && (
               <span className="text-xs bg-blue-600 text-white px-2 py-1 rounded-full">
                 {filters.categories.length + (filters.description ? 1 : 0) + (filters.month ? 1 : 0)}
@@ -279,15 +290,17 @@ export default function TransactionFilters({
               <Search className="absolute left-3 top-3 w-4 h-4 text-gray-500" />
               <input
                 type="text"
-                value={filters.description}
-                onChange={(e) => onFiltersChange({ description: e.target.value })}
+                value={searchInput} // Use local state
+                onChange={(e) => handleSearchInputChange(e.target.value)} // Use debounced handler
                 placeholder="Search transaction descriptions..."
                 className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                autoComplete="off" // Prevent browser autocomplete from interfering
               />
-              {filters.description && (
+              {searchInput && ( // Check local state for button visibility
                 <button
-                  onClick={() => onFiltersChange({ description: '' })}
+                  onClick={handleClearSearch} // Use proper clear handler
                   className="absolute right-3 top-3 text-gray-500 hover:text-gray-300"
+                  type="button" // Prevent form submission
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -301,66 +314,29 @@ export default function TransactionFilters({
               <label className="block text-sm font-medium text-gray-300">
                 Categories ({filters.categories.length} selected)
               </label>
-              {filters.categories.length > 0 && (
-                <button
-                  onClick={() => onFiltersChange({ categories: [] })}
-                  className="text-sm text-blue-400 hover:text-blue-300"
-                >
-                  Clear All
-                </button>
-              )}
             </div>
-
-            {/* Selected Categories */}
-            {filters.categories.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
-                {filters.categories.map((category) => (
-                  <span
-                    key={category}
-                    className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600 text-white text-sm rounded-full"
-                  >
-                    {category}
-                    <button
-                      onClick={() => onFiltersChange({
-                        categories: filters.categories.filter(c => c !== category)
-                      })}
-                      className="hover:text-blue-200"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
+            <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+              {categories
+                .filter(cat => !cat.is_income && !cat.is_payment && !cat.is_investment)
+                .map(category => (
+                  <label key={category.name} className="flex items-center text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={filters.categories.includes(category.name)}
+                      onChange={() => handleCategoryToggle(category.name)}
+                      className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-2 mr-2"
+                    />
+                    <span className="text-gray-300 hover:text-white truncate">
+                      {category.name}
+                    </span>
+                  </label>
                 ))}
-              </div>
-            )}
-
-            {/* Category Checkboxes */}
-            <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
-              {categories.map((category) => (
-                <label key={category.name} className="flex items-center gap-2 p-2 rounded hover:bg-gray-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={filters.categories.includes(category.name)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        onFiltersChange({
-                          categories: [...filters.categories, category.name]
-                        });
-                      } else {
-                        onFiltersChange({
-                          categories: filters.categories.filter(c => c !== category.name)
-                        });
-                      }
-                    }}
-                    className="rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-0"
-                  />
-                  <span className="text-sm text-gray-300">{category.name}</span>
-                </label>
-              ))}
             </div>
           </div>
 
-          {/* Date Filters - Horizontal */}
-          <div className="grid grid-cols-3 gap-4">
+          {/* Month and Date Range */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Month Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Month
@@ -369,21 +345,16 @@ export default function TransactionFilters({
                 type="text"
                 value={monthInput}
                 onChange={(e) => handleMonthChange(e.target.value)}
-                placeholder="January 2024, Jan 2024, or 2024-01"
-                className={`w-full px-3 py-2 bg-gray-700 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  monthError ? 'border-red-500' : 'border-gray-600'
-                }`}
+                placeholder="e.g., January 2024, Jan 2024, 2024-01"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                autoComplete="off"
               />
               {monthError && (
-                <p className="text-sm text-red-400 mt-1">{monthError}</p>
-              )}
-              {monthInput && !monthError && parseMonthInput(monthInput) && (
-                <p className="text-sm text-green-400 mt-1">
-                  ✓ Parsed as: {parseMonthInput(monthInput)}
-                </p>
+                <p className="mt-1 text-sm text-red-400">{monthError}</p>
               )}
             </div>
-            
+
+            {/* Start Date */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Start Date
@@ -395,7 +366,8 @@ export default function TransactionFilters({
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
-            
+
+            {/* End Date */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 End Date

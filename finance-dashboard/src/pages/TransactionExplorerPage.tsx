@@ -122,6 +122,10 @@ export default function TransactionExplorerPage() {
       return api.getTransactions(params);
     },
     staleTime: 30000, // 30 seconds
+    gcTime: 300000,   // 5 minutes (formerly cacheTime)
+    refetchOnWindowFocus: false, // Prevent refetch on window focus
+    refetchOnMount: false, // Don't refetch if data exists
+    enabled: true, // Always enabled since we want to fetch data
   });
 
   // Fetch categories for filter dropdown
