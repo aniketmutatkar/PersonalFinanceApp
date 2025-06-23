@@ -30,21 +30,14 @@ class TransactionModel(Base):
     """SQLAlchemy model for Transaction table with proper DATE column"""
     __tablename__ = 'transactions'
     
-    # Keep ALL existing columns exactly as they are:
     id = Column(Integer, primary_key=True)
-    date = Column(Date, nullable=False)
+    date = Column(Date, nullable=False)  # Now using proper DATE column
     description = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     category = Column(String, nullable=False)
     source = Column(String, nullable=False)
-    month = Column(String, nullable=False)
+    month = Column(String, nullable=False)  # Month in YYYY-MM format
     transaction_hash = Column(String, unique=True, nullable=False)
-    
-    # ADD these 4 new columns:
-    base_hash = Column(String, nullable=False, index=True, default='')
-    rank_within_batch = Column(Integer, nullable=False, default=1)
-    import_date = Column(Date, nullable=False, default=datetime.now().date())
-    import_batch_id = Column(String, nullable=False, index=True, default='unknown')
     
     def __repr__(self):
         return f"<Transaction(date='{self.date}', amount={self.amount}, category='{self.category}')>"
@@ -389,48 +382,5 @@ def add_enhanced_duplicate_constraints():
     except Exception as e:
         session.rollback()
         print(f"Warning: Could not add enhanced constraints: {str(e)}")
-    finally:
-        session.close()
-
-def add_ranking_columns():
-    """Add ranking columns to existing transactions table"""
-    session = get_db_session()
-    try:
-        # Check current schema
-        result = session.execute(text("PRAGMA table_info(transactions)")).fetchall()
-        existing_columns = [row[1] for row in result]
-        
-        # Add new columns if they don't exist
-        new_columns = [
-            ("base_hash", "TEXT NOT NULL DEFAULT ''"),
-            ("rank_within_batch", "INTEGER NOT NULL DEFAULT 1"), 
-            ("import_date", "DATE NOT NULL DEFAULT '2025-01-01'"),
-            ("import_batch_id", "TEXT NOT NULL DEFAULT 'unknown'")
-        ]
-        
-        for col_name, col_definition in new_columns:
-            if col_name not in existing_columns:
-                sql = f"ALTER TABLE transactions ADD COLUMN {col_name} {col_definition}"
-                session.execute(text(sql))
-                session.commit()
-                print(f"✅ Added column: {col_name}")
-        
-        # Add indexes for performance
-        indexes = [
-            "CREATE INDEX IF NOT EXISTS idx_transactions_base_hash ON transactions(base_hash)",
-            "CREATE INDEX IF NOT EXISTS idx_transactions_import_batch ON transactions(import_batch_id)",
-            "CREATE INDEX IF NOT EXISTS idx_transactions_base_hash_rank ON transactions(base_hash, rank_within_batch)"
-        ]
-        
-        for index_sql in indexes:
-            session.execute(text(index_sql))
-            session.commit()
-        
-        print("✅ Added ranking indexes")
-        
-    except Exception as e:
-        session.rollback()
-        print(f"❌ Error adding ranking columns: {e}")
-        raise
     finally:
         session.close()
