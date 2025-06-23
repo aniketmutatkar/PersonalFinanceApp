@@ -1,4 +1,4 @@
-// src/components/monthly/CategoryChart.tsx - Enhanced Version
+// src/components/monthly/CategoryChart.tsx - MINIMAL FIX: Only remove Math.abs, keep original structure
 import React, { useMemo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { MonthlySummary, Transaction } from '../../types/api';
@@ -34,35 +34,57 @@ export default function CategoryChart({ summary, transactions }: CategoryChartPr
       }
     });
     
-    const data = Object.entries(summary.category_totals)
-      .filter(([category, amount]) => {
-        const isExcluded = excludeCategories.includes(category);
-        const numericAmount = Number(amount);
-        const isPositive = numericAmount > 0;
-        return !isExcluded && isPositive;
-      })
+    // ✅ MINIMAL CHANGE: Remove the isPositive filter to show negative categories in the processing
+    // But still only use positive values for pie chart data
+    const allCategories = Object.entries(summary.category_totals)
+      .filter(([category]) => !excludeCategories.includes(category))
       .map(([category, amount]) => {
-        const numericAmount = Number(amount);
+        const numericAmount = Number(amount); // ✅ Keep original sign 
         const transactionCount = transactionCounts[category] || 0;
-        const avgPerTransaction = transactionCount > 0 ? numericAmount / transactionCount : 0;
+        const avgPerTransaction = transactionCount > 0 ? 
+          numericAmount / transactionCount : 0;
+        
+        return {
+          name: category,
+          value: numericAmount, // ✅ Preserve negative values
+          percentage: numericAmount > 0 ? ((numericAmount / summary.total_minus_invest) * 100).toFixed(1) : '0',
+          transactionCount,
+          avgPerTransaction,
+          isPositive: numericAmount > 0
+        };
+      })
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value)) // Sort by absolute value
+      .slice(0, 10); // Top 10 categories
+    
+    // ✅ ORIGINAL LOGIC: Only positive categories for pie chart
+    const positiveCategories = allCategories.filter(cat => cat.isPositive);
+    const totalAmount = summary.total_minus_invest;
+    
+    return { chartData: positiveCategories, totalAmount, allCategories };
+  }, [summary, transactions, summary.total_minus_invest]);
+
+  // ✅ FIXED: Move categories processing outside JSX to avoid conditional hook
+  const allCategoriesForLegend = useMemo(() => {
+    const excludeCategories = ['Pay', 'Payment', 'Acorns', 'Wealthfront', 'Robinhood', 'Schwab'];
+    return Object.entries(summary.category_totals)
+      .filter(([category]) => !excludeCategories.includes(category))
+      .map(([category, amount]) => {
+        const numericAmount = Number(amount); // ✅ Keep original sign
+        const transactionCount = transactions.filter(t => t.category === category).length;
+        const percentage = numericAmount > 0 ? ((numericAmount / summary.total_minus_invest) * 100).toFixed(1) : '—';
+        const isPositive = numericAmount > 0;
         
         return {
           name: category,
           value: numericAmount,
-          percentage: ((numericAmount / summary.total_minus_invest) * 100).toFixed(1),
+          percentage,
           transactionCount,
-          avgPerTransaction,
-          // You could add trend data here if you had previous month data
-          trend: null // Placeholder for future enhancement
+          color: COLORS[Object.keys(summary.category_totals).indexOf(category) % COLORS.length],
+          isPositive
         };
       })
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 10); // Top 10 categories
-    
-    const totalAmount = summary.total_minus_invest;
-    
-    return { chartData: data, totalAmount };
-  }, [summary, transactions]);
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+  }, [summary.category_totals, transactions, summary.total_minus_invest]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -103,9 +125,7 @@ export default function CategoryChart({ summary, transactions }: CategoryChartPr
     return null;
   };
 
-  // Custom legend component with enhanced styling - removed since we're inlining it
-  // const CustomLegend = () => (...)
-
+  // ✅ RESTORE ORIGINAL STRUCTURE EXACTLY
   return (
     <div className="bg-slate-800 border border-slate-600 rounded-xl p-6 h-96 flex flex-col">
       {/* Header */}
@@ -118,62 +138,50 @@ export default function CategoryChart({ summary, transactions }: CategoryChartPr
       
       {chartData.length > 0 ? (
         <>
-          {/* Main Content: Categories List + Chart - Fixed scrolling */}
+          {/* Main Content: Categories List + Chart - Original structure */}
           <div className="flex-1 flex gap-6 min-h-0">
-            {/* Categories List - Left Side - NOW PROPERLY SCROLLABLE */}
+            {/* Categories List - Left Side - ✅ SHOW ALL CATEGORIES INCLUDING NEGATIVES */}
             <div className="flex-1 overflow-y-auto max-h-96">
               <div className="space-y-1">
-                {/* Show ALL categories, not just top 8 */}
-                {Object.entries(summary.category_totals)
-                  .filter(([category, amount]) => {
-                    const excludeCategories = ['Pay', 'Payment', 'Acorns', 'Wealthfront', 'Robinhood', 'Schwab'];
-                    const isExcluded = excludeCategories.includes(category);
-                    const numericAmount = Number(amount);
-                    const isPositive = numericAmount > 0;
-                    return !isExcluded && isPositive;
-                  })
-                  .map(([category, amount]) => {
-                    const numericAmount = Number(amount);
-                    const transactionCount = transactions.filter(t => t.category === category).length;
-                    const percentage = ((numericAmount / summary.total_minus_invest) * 100).toFixed(1);
-                    
-                    return {
-                      name: category,
-                      value: numericAmount,
-                      percentage,
-                      transactionCount,
-                      color: COLORS[Object.keys(summary.category_totals).indexOf(category) % COLORS.length]
-                    };
-                  })
-                  .sort((a, b) => b.value - a.value)
-                  .map((entry, index) => (
+                {/* ✅ FIXED: Use pre-computed categories to avoid conditional hook */}
+                {allCategoriesForLegend.map((entry, index) => (
+                  <div 
+                    key={entry.name} 
+                    className={`flex items-center gap-2 p-2 rounded transition-colors ${
+                      entry.isPositive 
+                        ? 'hover:bg-slate-700/30' 
+                        : 'hover:bg-slate-700/20 opacity-75' // ✅ Muted for negative
+                    }`}
+                  >
                     <div 
-                      key={entry.name} 
-                      className="flex items-center gap-2 p-2 rounded hover:bg-slate-700/30 transition-colors"
-                    >
-                      <div 
-                        className="w-2.5 h-2.5 rounded-full flex-shrink-0" 
-                        style={{ backgroundColor: entry.color }}
-                      />
-                      <div className="flex-1 min-w-0 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <p className="text-white font-medium text-sm">
-                            {entry.name}
-                          </p>
-                          <p className="text-slate-300 text-sm font-medium">
-                            {entry.percentage}%
-                          </p>
-                        </div>
-                        <p className="text-slate-400 text-xs">
-                          {formatCurrency(entry.value)}
+                      className="w-2.5 h-2.5 rounded-full flex-shrink-0" 
+                      style={{ 
+                        backgroundColor: entry.isPositive ? entry.color : '#6B7280' // ✅ Gray for negative
+                      }}
+                    />
+                    <div className="flex-1 min-w-0 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <p className={`font-medium text-sm ${
+                          entry.isPositive ? 'text-white' : 'text-slate-400'
+                        }`}>
+                          {entry.name}
+                        </p>
+                        <p className="text-slate-300 text-sm font-medium">
+                          {entry.percentage}%
                         </p>
                       </div>
+                      <p className={`text-xs ${
+                        entry.isPositive ? 'text-slate-400' : 'text-slate-500'
+                      }`}>
+                        {formatCurrency(entry.value)}
+                      </p>
                     </div>
-                  ))}
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Chart - Right Side - Keep top 8 for chart clarity */}
+            {/* Chart - Right Side - ✅ RESTORE ORIGINAL DESIGN */}
             <div className="w-64 flex-shrink-0">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>

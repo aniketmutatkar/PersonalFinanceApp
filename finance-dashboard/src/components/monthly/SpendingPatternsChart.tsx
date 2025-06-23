@@ -1,6 +1,6 @@
-// src/components/monthly/SpendingPatternsChart.tsx - Enhanced with tabs
+// src/components/monthly/SpendingPatternsChart.tsx - REVERT TO ORIGINAL + minimal Math.abs fix
 import React, { useMemo, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceLine } from 'recharts';
 import { Transaction } from '../../types/api';
 
 interface SpendingPatternsChartProps {
@@ -54,20 +54,30 @@ export default function SpendingPatternsChart({ transactions, monthYear }: Spend
       };
     }
 
+    // ✅ DEBUG: Log the incoming data
+    console.log('🔧 SpendingPatternsChart Debug:');
+    console.log('🔧 Transactions count:', transactions.length);
+    console.log('🔧 Sample transactions:', transactions.slice(0, 3));
+    console.log('🔧 Month/Year:', monthYear);
+
     const [monthName, year] = monthYear.split(' ');
     const monthIndex = new Date(`${monthName} 1, ${year}`).getMonth();
     const daysInMonth = new Date(parseInt(year), monthIndex + 1, 0).getDate();
 
-    // Store daily spending
+    // Store daily spending - ✅ ONLY CHANGE: Remove Math.abs() here
     const dailySpending: Record<number, number> = {};
     
     transactions.forEach(transaction => {
-      const amount = Math.abs(transaction.amount);
+      const amount = Number(transaction.amount); // ✅ FIXED: Convert to number first!
       const date = new Date(transaction.date);
       const day = date.getDate();
       
       dailySpending[day] = (dailySpending[day] || 0) + amount;
     });
+
+    // ✅ DEBUG: Log daily spending data
+    console.log('🔧 Daily spending totals:', dailySpending);
+    console.log('🔧 Days in month:', daysInMonth);
 
     // Create combined data array starting with day 0
     const processedCombinedData: CombinedSpendingData[] = [];
@@ -117,10 +127,15 @@ export default function SpendingPatternsChart({ transactions, monthYear }: Spend
 
     // Calculate period insights from the data points that have totals
     const longPeriodTotals = processedCombinedData
-      .filter(d => d.longPeriodTotal !== undefined && d.longPeriodTotal > 0)
-      .map(d => d.longPeriodTotal!);
+      .filter(d => d.longPeriodTotal !== undefined)
+      .map(d => d.longPeriodTotal!)
+      .filter(total => typeof total === 'number' && isFinite(total)); // ✅ FIXED: Remove > 0 filter, allow negatives
     
-    const weeklyPeak = Math.max(...longPeriodTotals, 0);
+    // ✅ DEBUG: Log period totals
+    console.log('🔧 Long period totals (all valid numbers):', longPeriodTotals);
+    console.log('🔧 All long period data:', processedCombinedData.filter(d => d.longPeriodTotal !== undefined).map(d => ({ day: d.day, total: d.longPeriodTotal })));
+    
+    const weeklyPeak = longPeriodTotals.length > 0 ? Math.max(...longPeriodTotals) : 0;
     const weeklyLowest = longPeriodTotals.length > 0 ? Math.min(...longPeriodTotals) : 0;
     const weeklyAverage = longPeriodTotals.length > 0 ? longPeriodTotals.reduce((sum, amt) => sum + amt, 0) / longPeriodTotals.length : 0;
     
@@ -136,7 +151,7 @@ export default function SpendingPatternsChart({ transactions, monthYear }: Spend
     const categoryTotals: Record<string, number> = {};
     
     transactions.forEach(transaction => {
-      const amount = Math.abs(transaction.amount);
+      const amount = Math.abs(transaction.amount); // ✅ Keep Math.abs() for category ranking only
       if (!excludeCategories.includes(transaction.category)) {
         categoryTotals[transaction.category] = (categoryTotals[transaction.category] || 0) + amount;
       }
@@ -147,11 +162,15 @@ export default function SpendingPatternsChart({ transactions, monthYear }: Spend
       .slice(0, 6) // Top 6 after exclusions
       .map(([category]) => category);
 
-    // Group by day and category
+    // ✅ DEBUG: Log category processing
+    console.log('🔧 Category totals:', categoryTotals);
+    console.log('🔧 Top categories:', topCategories);
+
+    // Group by day and category - ✅ ONLY CHANGE: Remove Math.abs() here too
     const dailyCategorySpending: Record<string, Record<string, number>> = {};
     
     transactions.forEach(transaction => {
-      const amount = Math.abs(transaction.amount);
+      const amount = Number(transaction.amount); // ✅ FIXED: Convert to number first!
       const date = new Date(transaction.date);
       const day = date.getDate();
       const dayKey = day.toString();
@@ -182,19 +201,28 @@ export default function SpendingPatternsChart({ transactions, monthYear }: Spend
       processedCategoryData.push(dayData);
     }
 
+    // ✅ DEBUG: Log final data structures
+    console.log('🔧 Final combined data sample:', processedCombinedData.slice(0, 5));
+    console.log('🔧 Final category data sample:', processedCategoryData.slice(0, 5));
+    console.log('🔧 Weekly insights:', {
+      peak: weeklyPeak,
+      lowest: weeklyLowest,
+      average: weeklyAverage
+    });
+
     return {
       combinedData: processedCombinedData,
       categoryData: processedCategoryData,
-      weeklyInsights: { 
-        peak: weeklyPeak, 
-        lowest: weeklyLowest, 
-        average: weeklyAverage, 
-        peakWeek, 
-        lowestWeek 
+      weeklyInsights: {
+        peak: weeklyPeak,
+        lowest: weeklyLowest,
+        average: weeklyAverage,
+        peakWeek,
+        lowestWeek
       },
-      categoryInsights: { 
-        topCategories, 
-        totalDays: daysInMonth 
+      categoryInsights: {
+        topCategories,
+        totalDays: daysInMonth
       }
     };
   }, [transactions, monthYear]);
@@ -209,27 +237,26 @@ export default function SpendingPatternsChart({ transactions, monthYear }: Spend
   };
 
   const getCategoryColor = (category: string, index: number) => {
-    return CATEGORY_COLORS[category] || ['#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#F97316'][index % 6];
+    return CATEGORY_COLORS[category] || COLORS[index % COLORS.length];
   };
+
+  const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4'];
 
   const CombinedTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-      const day = label;
+      const data = payload[0].payload;
       return (
         <div className="bg-slate-800 border border-slate-600 rounded-lg p-3 shadow-xl">
-          <p className="text-white font-semibold mb-2">Day {day}</p>
+          <p className="text-white font-semibold mb-2">{data.date}</p>
           <div className="space-y-1">
             {payload.map((entry: any, index: number) => {
-              if (entry.value !== undefined && entry.value > 0) {
-                const isLongPeriod = entry.dataKey === 'longPeriodTotal';
-                const periodLength = isLongPeriod ? LONG_PERIOD_DAYS : SHORT_PERIOD_DAYS;
-                return (
-                  <p key={index} style={{ color: entry.color }} className="text-sm">
-                    {periodLength}-Day Total: {formatCurrency(entry.value)}
-                  </p>
-                );
-              }
-              return null;
+              const periodLength = entry.dataKey.includes('long') ? 
+                LONG_PERIOD_DAYS : SHORT_PERIOD_DAYS;
+              return (
+                <p key={index} style={{ color: entry.color }} className="text-sm">
+                  {periodLength}-Day Total: {formatCurrency(entry.value)}
+                </p>
+              );
             })}
           </div>
         </div>
@@ -247,7 +274,7 @@ export default function SpendingPatternsChart({ transactions, monthYear }: Spend
           <div className="space-y-1">
             {categoryInsights.topCategories.map((category, index) => {
               const amount = data[category] as number;
-              if (amount > 0) {
+              if (amount !== 0) { // ✅ FIXED: Show both positive AND negative amounts
                 return (
                   <p key={category} className="text-sm" style={{ color: getCategoryColor(category, index) }}>
                     {category}: {formatCurrency(amount)}
@@ -308,8 +335,8 @@ export default function SpendingPatternsChart({ transactions, monthYear }: Spend
         
         <p className="text-slate-400 text-sm">
           {activeView === 'weekly' 
-            ? `${LONG_PERIOD_DAYS}-day spending totals with ${SHORT_PERIOD_DAYS}-day comparisons`
-            : `Top ${categoryInsights.topCategories.length} categories spending over time`
+            ? `Peak: ${formatCurrency(weeklyInsights.peak)} • Lowest: ${formatCurrency(weeklyInsights.lowest)} • Avg: ${formatCurrency(weeklyInsights.average)}`
+            : `Daily spending breakdown by top ${categoryInsights.topCategories.length} categories`
           }
         </p>
       </div>
@@ -330,7 +357,11 @@ export default function SpendingPatternsChart({ transactions, monthYear }: Spend
                 axisLine={{ stroke: '#475569' }}
                 tickLine={{ stroke: '#475569' }}
                 tickFormatter={formatCurrency}
+                domain={['dataMin', 'dataMax']}
+                tickCount={6}
               />
+              {/* ✅ ADDED: Zero reference line */}
+              <ReferenceLine y={0} stroke="#64748b" strokeDasharray="2 2" strokeWidth={1} />
               <Tooltip content={<CombinedTooltip />} />
               
               {/* Long period totals (blue) */}
@@ -368,7 +399,11 @@ export default function SpendingPatternsChart({ transactions, monthYear }: Spend
                 axisLine={{ stroke: '#475569' }}
                 tickLine={{ stroke: '#475569' }}
                 tickFormatter={formatCurrency}
+                domain={['dataMin', 'dataMax']}
+                tickCount={6}
               />
+              {/* ✅ ADDED: Zero reference line */}
+              <ReferenceLine y={0} stroke="#64748b" strokeDasharray="2 2" strokeWidth={1} />
               <Tooltip content={<CategoryTooltip />} />
               
               {categoryInsights.topCategories.map((category, index) => (
@@ -385,43 +420,6 @@ export default function SpendingPatternsChart({ transactions, monthYear }: Spend
             </LineChart>
           )}
         </ResponsiveContainer>
-      </div>
-
-      {/* Insights */}
-      <div className="flex-shrink-0">
-        {activeView === 'weekly' ? (
-          <div className="grid grid-cols-3 gap-2 p-2 bg-slate-700/30 rounded-lg">
-            <div className="text-center">
-              <p className="text-slate-400 text-[10px] uppercase tracking-wide">Peak Period</p>
-              <p className="text-white text-sm font-semibold">{formatCurrency(weeklyInsights.peak)}</p>
-              <p className="text-slate-300 text-[10px]">{weeklyInsights.peakWeek}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-slate-400 text-[10px] uppercase tracking-wide">{LONG_PERIOD_DAYS}-Day Average</p>
-              <p className="text-white text-sm font-semibold">{formatCurrency(weeklyInsights.average)}</p>
-              <p className="text-slate-300 text-[10px]">per period</p>
-            </div>
-            <div className="text-center">
-              <p className="text-slate-400 text-[10px] uppercase tracking-wide">Lowest Period</p>
-              <p className="text-white text-sm font-semibold">{formatCurrency(weeklyInsights.lowest)}</p>
-              <p className="text-slate-300 text-[10px]">{weeklyInsights.lowestWeek}</p>
-            </div>
-          </div>
-        ) : (
-          <div className="p-3 bg-slate-700/30 rounded-lg">
-            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
-              {categoryInsights.topCategories.map((category, index) => (
-                <div key={category} className="flex items-center gap-2">
-                  <div 
-                    className="w-3 h-3 rounded-full flex-shrink-0" 
-                    style={{ backgroundColor: getCategoryColor(category, index) }}
-                  />
-                  <span className="text-white text-sm font-medium">{category}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
