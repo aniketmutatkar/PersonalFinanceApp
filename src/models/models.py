@@ -4,7 +4,7 @@ Updated to standardize date formats for consistent hashing.
 """
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date as Date, datetime
 from decimal import Decimal
 from typing import Optional, Dict, List
 import hashlib
@@ -13,8 +13,8 @@ import pandas as pd
 
 @dataclass
 class Transaction:
-    """Represents a financial transaction"""
-    date: date
+    """Represents a financial transaction with timestamp-based duplicate detection"""
+    date: Date
     description: str
     amount: Decimal
     category: str
@@ -23,15 +23,27 @@ class Transaction:
     id: Optional[int] = None
     month_str: Optional[str] = None
     
+    # UPDATED: Timestamp-based duplicate detection fields
+    import_timestamp: Optional[datetime] = None  # CHANGED: When this batch was imported (exact time)
+    rank_within_batch: Optional[int] = None  # 1,2,3 for same base_hash
+    import_batch_id: Optional[str] = None  # UUID per upload session
+    base_hash: Optional[str] = None  # Core transaction signature
+    
     def __post_init__(self):
-        """Initialize month string if not provided"""
-        if self.month_str is None and isinstance(self.date, date):
+        """Initialize month string and base hash if not provided"""
+        if self.month_str is None and isinstance(self.date, Date):
             self.month_str = self.date.strftime("%Y-%m")
+        
+        # Generate base_hash if not provided
+        if self.base_hash is None:
+            self.base_hash = self.create_base_hash(
+                self.date, self.description, self.amount, self.source
+            )
     
     @classmethod
-    def create_hash(cls, date_str, description, amount, source):
+    def create_base_hash(cls, date_str, description, amount, source):
         """
-        Create a unique hash for a transaction to prevent duplicates.
+        Create base hash for duplicate detection (without rank/import info).
         Always standardizes dates to MM/dd/yyyy format regardless of input.
         """
         try:
@@ -52,8 +64,41 @@ class Transaction:
         hash_string = f"{standardized_date}|{description}|{amount}|{source}"
         
         # Create a hash
-        return hashlib.md5(hash_string.encode()).hexdigest()
-
+        return hashlib.md5(hash_string.encode()).hexdigest()[:12]  # Shortened for readability
+    
+    @classmethod
+    def create_hash(cls, date_str, description, amount, source, rank=None, import_batch_id=None):
+        """
+        Create full transaction hash including rank and batch info for uniqueness.
+        This replaces the old create_hash method entirely.
+        """
+        # Start with base hash
+        base_hash = cls.create_base_hash(date_str, description, amount, source)
+        
+        # Add rank and batch info if provided
+        if rank is not None and import_batch_id is not None:
+            full_hash_string = f"{base_hash}_rank{rank}_batch{import_batch_id}"
+            return hashlib.md5(full_hash_string.encode()).hexdigest()[:16]
+        else:
+            # For backwards compatibility or manual transactions
+            return base_hash
+    
+    def generate_full_hash(self):
+        """Generate the full transaction hash using instance data"""
+        if self.rank_within_batch is not None and self.import_batch_id is not None:
+            self.transaction_hash = self.create_hash(
+                self.date, 
+                self.description, 
+                self.amount, 
+                self.source,
+                self.rank_within_batch,
+                self.import_batch_id
+            )
+        else:
+            # Fallback to base hash for manual transactions
+            self.transaction_hash = self.base_hash
+        
+        return self.transaction_hash
 
 @dataclass
 class Category:

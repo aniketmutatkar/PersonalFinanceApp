@@ -1,7 +1,7 @@
 # src/repositories/transaction_repository.py
 
 from typing import List, Dict, Set, Tuple, Optional
-from datetime import date
+from datetime import date, datetime
 import pandas as pd
 from decimal import Decimal
 from sqlalchemy.exc import IntegrityError
@@ -17,7 +17,7 @@ class TransactionRepository:
     def _create_transaction_from_row(self, row):
         """
         Helper method to create Transaction domain entity from database row.
-        Now handles proper DATE columns.
+        Now handles timestamp-based duplicate detection fields.
         """
         # Parse date from database - should be in YYYY-MM-DD format
         tx_date = row.date
@@ -25,6 +25,14 @@ class TransactionRepository:
             # Parse ISO date string
             from datetime import datetime
             tx_date = datetime.fromisoformat(tx_date).date()
+        
+        # Parse import_timestamp if present
+        import_timestamp = None
+        if hasattr(row, 'import_timestamp') and row.import_timestamp:
+            if isinstance(row.import_timestamp, str):
+                import_timestamp = datetime.fromisoformat(row.import_timestamp)
+            else:
+                import_timestamp = row.import_timestamp
         
         return Transaction(
             id=row.id,
@@ -34,9 +42,14 @@ class TransactionRepository:
             category=row.category,
             source=row.source,
             transaction_hash=row.transaction_hash,
-            month_str=row.month
+            month_str=row.month,
+            # UPDATED FIELDS
+            import_timestamp=import_timestamp,  # CHANGED from import_date
+            rank_within_batch=getattr(row, 'rank_within_batch', None),
+            import_batch_id=getattr(row, 'import_batch_id', None),
+            base_hash=getattr(row, 'base_hash', None)
         )
-
+    
     def find_with_filters(
         self,
         categories: Optional[List[str]] = None,
@@ -148,140 +161,160 @@ class TransactionRepository:
 
     def save(self, transaction: Transaction) -> Transaction:
         """
-        Save a transaction to the database with proper DATE handling.
-        
-        Args:
-            transaction: The transaction to save
-            
-        Returns:
-            The saved transaction with ID
-            
-        Raises:
-            ValueError: If a transaction with the same hash already exists
+        Save a single transaction (for manual entry).
         """
         session = get_db_session()
         
         try:
-            # Create a SQLAlchemy model from the domain entity
+            # For manual transactions, use base_hash as full hash
+            if not transaction.transaction_hash:
+                transaction.transaction_hash = transaction.base_hash or Transaction.create_base_hash(
+                    transaction.date, transaction.description, transaction.amount, transaction.source
+                )
+            
             transaction_model = TransactionModel(
-                date=transaction.date,  # Store as ISO date string (YYYY-MM-DD)
+                date=transaction.date,
                 description=transaction.description,
                 amount=float(transaction.amount),
                 category=transaction.category,
                 source=transaction.source,
                 month=transaction.month_str,
-                transaction_hash=transaction.transaction_hash
+                transaction_hash=transaction.transaction_hash,
+                # NEW FIELDS - None for manual transactions
+                import_date=transaction.import_date,
+                rank_within_batch=transaction.rank_within_batch,
+                import_batch_id=transaction.import_batch_id,
+                base_hash=transaction.base_hash
             )
             
-            # Add to session and flush to get ID
             session.add(transaction_model)
             session.flush()
             
-            # Update domain entity with generated ID
             transaction.id = transaction_model.id
-            
-            # Commit
             session.commit()
             
             return transaction
             
         except IntegrityError:
-            # Unique constraint violation (duplicate hash)
             session.rollback()
             raise ValueError(f"Transaction with hash {transaction.transaction_hash} already exists")
         finally:
             session.close()
-    
-    def save_many(self, transactions: List[Transaction]) -> Tuple[int, Dict[str, Set[str]], List[str]]:
+
+    def save_many(self, transactions: List[Transaction], import_batch_id: str, import_timestamp: datetime) -> Tuple[int, Dict[str, Set[str]], List[str]]:
         """
-        Save multiple transactions to the database with proper DATE handling.
+        Save multiple transactions with timestamp-based duplicate detection.
+        """
+        print(f"🔍 save_many called")
+        print(f"🔍   transactions: {len(transactions) if transactions else 'None'}")
+        print(f"🔍   import_batch_id: {import_batch_id}")
+        print(f"🔍   import_timestamp: {import_timestamp} (type: {type(import_timestamp)})")
         
-        Args:
-            transactions: List of transactions to save
-            
-        Returns:
-            Tuple containing:
-                - Number of transactions added
-                - Dictionary mapping affected months to sets of affected categories  
-                - List of transaction hashes that were duplicates
-        """
         if not transactions:
+            print("🔍 No transactions provided - returning early")
             return 0, {}, []
+        
+        # Show first few transactions
+        for i, tx in enumerate(transactions[:3]):
+            print(f"🔍 Transaction {i+1}: {tx.description[:30]}")
+            print(f"🔍   base_hash: {tx.base_hash}")
+            print(f"🔍   import_timestamp: {tx.import_timestamp}")
+            print(f"🔍   import_batch_id: {tx.import_batch_id}")
+        
+        # Step 1: Assign ranks within this batch
+        print("🔍 Calling assign_ranks_within_batch...")
+        self.assign_ranks_within_batch(transactions, import_batch_id, import_timestamp)
         
         session = get_db_session()
         records_added = 0
         affected_data = {}
-        duplicate_hashes = []  # NEW: Track duplicates
+        duplicate_hashes = []
         
         try:
-            # Process each transaction
-            for transaction in transactions:
-                # Create a SQLAlchemy model
-                transaction_model = TransactionModel(
-                    date=transaction.date,
-                    description=transaction.description,
-                    amount=float(transaction.amount),
-                    category=transaction.category,
-                    source=transaction.source,
-                    month=transaction.month_str,
-                    transaction_hash=transaction.transaction_hash
-                )
+            print(f"🔍 Starting duplicate check and save for {len(transactions)} transactions...")
+            
+            # Step 2: Check each transaction for duplicates before saving
+            for i, transaction in enumerate(transactions):
+                print(f"🔍 Processing transaction {i+1}/{len(transactions)}: {transaction.description[:30]}")
+                print(f"🔍   rank: {transaction.rank_within_batch}, hash: {transaction.transaction_hash}")
                 
-                try:
-                    # Add and commit
-                    session.add(transaction_model)
-                    session.commit()
-                    records_added += 1
+                is_dup = self.is_duplicate(transaction)
+                print(f"🔍   is_duplicate: {is_dup}")
+                
+                if not is_dup:
+                    print("🔍   Saving transaction...")
+                    # Not a duplicate - save it
+                    transaction_model = TransactionModel(
+                        date=transaction.date,
+                        description=transaction.description,
+                        amount=float(transaction.amount),
+                        category=transaction.category,
+                        source=transaction.source,
+                        month=transaction.month_str,
+                        transaction_hash=transaction.transaction_hash,
+                        import_timestamp=transaction.import_timestamp,
+                        rank_within_batch=transaction.rank_within_batch,
+                        import_batch_id=transaction.import_batch_id,
+                        base_hash=transaction.base_hash
+                    )
                     
-                    # Update domain entity with generated ID
-                    transaction.id = transaction_model.id
+                    try:
+                        session.add(transaction_model)
+                        session.commit()
+                        records_added += 1
+                        print(f"🔍   ✅ Saved with ID: {transaction_model.id}")
+                        
+                        # Update domain entity with generated ID
+                        transaction.id = transaction_model.id
+                        
+                        # Track which month and category were affected
+                        month = transaction.month_str
+                        category = transaction.category
+                        
+                        if month not in affected_data:
+                            affected_data[month] = set()
+                        affected_data[month].add(category)
+                        
+                    except IntegrityError as e:
+                        print(f"🔍   ❌ IntegrityError saving transaction: {str(e)}")
+                        session.rollback()
+                        duplicate_hashes.append(transaction.base_hash)
+                    except Exception as e:
+                        print(f"🔍   ❌ Error saving transaction: {str(e)}")
+                        session.rollback()
+                        raise e
+                else:
+                    print("🔍   ❌ Marked as duplicate")
+                    # Mark as duplicate
+                    duplicate_hashes.append(transaction.base_hash)
                     
-                    # Track which month and category were affected
-                    month = transaction.month_str
-                    category = transaction.category
-                    
-                    if month not in affected_data:
-                        affected_data[month] = set()
-                    affected_data[month].add(category)
-                    
-                except IntegrityError:
-                    # Skip duplicates (unique constraint violation)
-                    session.rollback()
-                    duplicate_hashes.append(transaction.transaction_hash)  # NEW: Track duplicate
+        except Exception as e:
+            print(f"🔍 ❌ Error in save_many: {str(e)}")
+            session.rollback()
+            import traceback
+            traceback.print_exc()
+            raise e
         finally:
             session.close()
-    
+
+        print(f"🔍 save_many complete: {records_added} saved, {len(duplicate_hashes)} duplicates")
+        print(f"🔍 affected_data: {affected_data}")
         return records_added, affected_data, duplicate_hashes
 
     def update(self, transaction_id: int, updates: Dict[str, any]) -> Tuple[Transaction, Set[str]]:
         """
-        Update a transaction by ID and return affected months for summary recalculation.
-        
-        Args:
-            transaction_id: The transaction ID to update
-            updates: Dictionary of fields to update
-            
-        Returns:
-            Tuple containing:
-                - Updated transaction
-                - Set of affected month strings that need summary recalculation
-            
-        Raises:
-            ValueError: If transaction not found or validation fails
+        Update a transaction by ID with new hash logic.
         """
         session = get_db_session()
         
         try:
-            # First, get the existing transaction
             existing_tx = self.find_by_id(transaction_id)
             if not existing_tx:
                 raise ValueError(f"Transaction with ID {transaction_id} not found")
             
-            # Track affected months (old and potentially new)
             affected_months = set()
             affected_months.add(existing_tx.month_str)
             
-            # Apply updates to create new transaction object
             updated_data = {
                 'date': updates.get('date', existing_tx.date),
                 'description': updates.get('description', existing_tx.description),
@@ -290,7 +323,6 @@ class TransactionRepository:
                 'source': updates.get('source', existing_tx.source),
             }
             
-            # Check if date changed (affects month)
             new_date = updated_data['date']
             if isinstance(new_date, str):
                 new_date = pd.to_datetime(new_date).date()
@@ -299,13 +331,16 @@ class TransactionRepository:
             if new_month_str != existing_tx.month_str:
                 affected_months.add(new_month_str)
             
-            # Generate new hash if key fields changed
-            new_hash = Transaction.create_hash(
+            # Generate new base hash and transaction hash
+            new_base_hash = Transaction.create_base_hash(
                 updated_data['date'],
                 updated_data['description'], 
                 updated_data['amount'],
                 updated_data['source']
             )
+            
+            # For updated transactions, use base_hash as transaction_hash (manual-style)
+            new_hash = new_base_hash
             
             # Check for duplicate hash (excluding the current transaction)
             duplicate_check_query = text("""
@@ -330,7 +365,8 @@ class TransactionRepository:
                 category = :category,
                 source = :source,
                 month = :month_str,
-                transaction_hash = :hash
+                transaction_hash = :hash,
+                base_hash = :base_hash
             WHERE id = :id
             """)
             
@@ -342,6 +378,7 @@ class TransactionRepository:
                 "source": updated_data['source'],
                 "month_str": new_month_str,
                 "hash": new_hash,
+                "base_hash": new_base_hash,
                 "id": transaction_id
             })
             
@@ -356,7 +393,8 @@ class TransactionRepository:
                 category=updated_data['category'],
                 source=updated_data['source'],
                 transaction_hash=new_hash,
-                month_str=new_month_str
+                month_str=new_month_str,
+                base_hash=new_base_hash
             )
             
             return updated_transaction, affected_months
@@ -366,6 +404,7 @@ class TransactionRepository:
             raise e
         finally:
             session.close()
+    
     def find_by_category(self, category: str) -> List[Transaction]:
         """Find transactions for a specific category. LEGACY METHOD."""
         transactions, _ = self.find_with_filters(categories=[category], limit=10000)
@@ -415,3 +454,96 @@ class TransactionRepository:
             return [row[0] for row in result]
         finally:
             session.close()
+    
+    def find_by_base_hash_and_rank(self, base_hash: str, rank: int) -> Optional[Transaction]:
+        """
+        Find existing transaction with same base_hash and rank from any import timestamp.
+        Used for duplicate detection.
+        """
+        session = get_db_session()
+        
+        try:
+            query = text("""
+            SELECT * FROM transactions
+            WHERE base_hash = :base_hash AND rank_within_batch = :rank
+            """)
+            
+            result = session.execute(query, {
+                "base_hash": base_hash,
+                "rank": rank
+            }).fetchone()
+            
+            if not result:
+                return None
+            
+            return self._create_transaction_from_row(result)
+        finally:
+            session.close()
+
+    def assign_ranks_within_batch(self, transactions: List[Transaction], import_batch_id: str, import_timestamp: datetime):
+        """
+        Assign ranks to transactions within the same batch based on base_hash groups.
+        """
+        from collections import defaultdict
+        
+        print(f"🔍 assign_ranks_within_batch called with {len(transactions)} transactions")
+        
+        # Group transactions by base_hash
+        base_hash_groups = defaultdict(list)
+        
+        for transaction in transactions:
+            # Ensure base_hash is set
+            if not transaction.base_hash:
+                transaction.base_hash = Transaction.create_base_hash(
+                    transaction.date, transaction.description, transaction.amount, transaction.source
+                )
+                print(f"🔍 Generated base_hash: {transaction.base_hash} for {transaction.description[:30]}")
+            
+            base_hash_groups[transaction.base_hash].append(transaction)
+        
+        print(f"🔍 Created {len(base_hash_groups)} base_hash groups:")
+        for base_hash, tx_group in base_hash_groups.items():
+            print(f"🔍   {base_hash}: {len(tx_group)} transactions")
+        
+        # Assign ranks within each group
+        for base_hash, tx_group in base_hash_groups.items():
+            print(f"🔍 Assigning ranks for base_hash {base_hash}:")
+            for rank, transaction in enumerate(tx_group, 1):
+                transaction.rank_within_batch = rank
+                transaction.import_batch_id = import_batch_id
+                transaction.import_timestamp = import_timestamp
+                # Generate full hash with rank and batch info
+                transaction.generate_full_hash()
+                print(f"🔍   Rank {rank}: {transaction.description[:30]} -> hash: {transaction.transaction_hash}")
+
+    def is_duplicate(self, transaction: Transaction) -> bool:
+        """
+        Check if transaction is a duplicate using timestamp-based detection.
+        UPDATED: Uses import_timestamp for more precise duplicate detection.
+        Returns True if this transaction appears to be a re-upload.
+        """
+        print(f"🔍 Checking duplicate for: base_hash={transaction.base_hash}, rank={transaction.rank_within_batch}")
+        
+        if not transaction.base_hash or not transaction.rank_within_batch:
+            print(f"🔍 Missing data - base_hash: {transaction.base_hash}, rank: {transaction.rank_within_batch}")
+            return False
+        
+        existing = self.find_by_base_hash_and_rank(
+            transaction.base_hash, 
+            transaction.rank_within_batch
+        )
+        
+        if existing:
+            print(f"🔍 Found existing: import_timestamp={existing.import_timestamp} vs new={transaction.import_timestamp}")
+            
+            # UPDATED LOGIC: Different timestamps = different uploads = duplicate
+            if existing.import_timestamp != transaction.import_timestamp:
+                print(f"🔍 DUPLICATE DETECTED! (different upload timestamps)")
+                return True
+            else:
+                print(f"🔍 Same timestamp - part of same upload batch")
+                return False
+        else:
+            print(f"🔍 No existing transaction found")
+        
+        return False

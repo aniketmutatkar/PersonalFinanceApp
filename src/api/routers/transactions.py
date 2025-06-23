@@ -4,7 +4,7 @@ import os
 import tempfile
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from typing import List, Optional, Dict
-from datetime import date, datetime, timedelta
+from datetime import date as date_type, datetime, timedelta
 import pandas as pd
 import uuid
 import time
@@ -50,8 +50,8 @@ async def get_transactions(
    categories: Optional[List[str]] = Query(default=None, description="Filter by categories (OR logic)"),
    category: Optional[str] = Query(None, description="Single category filter (legacy)"),
    description: Optional[str] = Query(None, description="Search in transaction descriptions"),
-   start_date: Optional[date] = Query(None, description="Start date filter (YYYY-MM-DD)"),
-   end_date: Optional[date] = Query(None, description="End date filter (YYYY-MM-DD)"),
+   start_date: Optional[date_type] = Query(None, description="Start date filter (YYYY-MM-DD)"),
+   end_date: Optional[date_type] = Query(None, description="End date filter (YYYY-MM-DD)"),
    month: Optional[str] = Query(None, description="Month filter (YYYY-MM format)"),
    sort_field: Optional[str] = Query('date', description="Sort field: date, description, category, amount, source"), 
    sort_direction: Optional[str] = Query('desc', description="Sort direction: asc, desc"),
@@ -181,7 +181,7 @@ async def create_transaction(
     transaction_repo: TransactionRepository = Depends(get_transaction_repository)
 ):
     """
-    Create a new transaction manually - updated for proper DATE handling
+    Create a new transaction manually - updated for rank-based duplicate detection
     """
     try:
         # Ensure we have a proper date object
@@ -190,22 +190,19 @@ async def create_transaction(
             from datetime import datetime
             tx_date = datetime.fromisoformat(tx_date).date()
         
-        # Create transaction hash using standardized MM/dd/yyyy format
-        tx_hash = Transaction.create_hash(
-            tx_date,  # Pass date object directly
-            transaction.description,
-            transaction.amount,
-            transaction.source
-        )
-        
-        # Create domain model
+        # Create Transaction object for manual entry (no rank/batch info)
         tx = Transaction(
             date=tx_date,
             description=transaction.description,
             amount=transaction.amount,
             category=transaction.category,
             source=transaction.source,
-            transaction_hash=tx_hash
+            transaction_hash="",  # Will be set by save method
+            # For manual transactions, these remain None
+            import_date=None,
+            rank_within_batch=None,
+            import_batch_id=None,
+            base_hash=None  # Will be generated in __post_init__
         )
         
         # Save to repository
@@ -214,7 +211,7 @@ async def create_transaction(
         # Return response
         return TransactionResponse(
             id=saved_tx.id,
-            date=saved_tx.date,  # Will be serialized as YYYY-MM-DD by Pydantic
+            date=saved_tx.date,
             description=saved_tx.description,
             amount=saved_tx.amount,
             category=saved_tx.category,
@@ -223,7 +220,6 @@ async def create_transaction(
             month_str=saved_tx.month_str
         )
     except ValueError as e:
-        # Handle duplicate transaction error
         if "already exists" in str(e):
             raise APIError(
                 status_code=409,
@@ -352,20 +348,24 @@ async def update_transaction(
 async def preview_upload(
     files: List[UploadFile] = File(...),
     import_service: ImportService = Depends(get_import_service),
-    transaction_repo: TransactionRepository = Depends(get_transaction_repository)  # NEW: Add this dependency
+    transaction_repo: TransactionRepository = Depends(get_transaction_repository)
 ):
     """
-    Preview uploaded files and identify transactions needing review
-    Updated to check for duplicates during preview stage
+    Preview uploaded files with timestamp-based duplicate detection preview
     """
     session_id = str(uuid.uuid4())
     all_transactions = []
     all_misc_transactions = []
     files_info = {}
     
-    existing_hashes = transaction_repo.get_existing_hashes()
+    # FIXED: Generate preview timestamp for duplicate checking
+    preview_import_timestamp = datetime.now()  # CHANGED: Use datetime instead of date
+    
+    print(f"🔍 preview_upload called with {len(files)} files")
     
     for file in files:
+        print(f"🔍 Processing file: {file.filename}")
+        
         # Validate and ensure we have a proper filename
         original_filename = getattr(file, 'filename', None)
         if not original_filename or not isinstance(original_filename, str):
@@ -384,30 +384,63 @@ async def preview_upload(
                 temp_file.write(content)
                 temp_file_path = temp_file.name
             except Exception as e:
+                print(f"🔍 Error reading file: {e}")
                 continue
         
         try:
             # Process the file with the original filename for bank detection
             df = import_service.process_bank_file(temp_file_path, original_filename=original_filename)
             
+            print(f"🔍 Processed file: {len(df) if df is not None else 0} transactions")
+            
             if df is not None and not df.empty:
-                # Add temporary IDs to each transaction
-                transactions = []
+                # Create preview transactions with batch info for duplicate detection
+                preview_transactions = []
                 for _, row in df.iterrows():
                     tx_dict = row.to_dict()
                     tx_dict['temp_id'] = str(uuid.uuid4())
                     tx_dict['original_filename'] = original_filename
                     
-                    tx_hash = str(tx_dict['transaction_hash'])
-                    tx_dict['is_duplicate'] = tx_hash in existing_hashes
+                    # Create transaction for duplicate checking
+                    tx_date = pd.to_datetime(tx_dict['Date']).date()
                     
-                    transactions.append(tx_dict)
+                    # FIXED: Use correct field names for Transaction
+                    preview_tx = Transaction(
+                        date=tx_date,
+                        description=str(tx_dict['Description']),
+                        amount=Decimal(str(tx_dict['Amount'])),
+                        category=str(tx_dict['Category']),
+                        source=str(tx_dict['source']),
+                        transaction_hash="",
+                        import_timestamp=preview_import_timestamp,  # CHANGED: from import_date
+                        import_batch_id=session_id  # Use session_id as preview batch
+                    )
+                    preview_transactions.append(preview_tx)
+                    tx_dict['is_duplicate'] = False  # Will be updated below
                 
+                print(f"🔍 Created {len(preview_transactions)} preview transactions")
+                
+                # FIXED: Assign ranks for duplicate detection with correct parameter type
+                transaction_repo.assign_ranks_within_batch(
+                    preview_transactions, session_id, preview_import_timestamp  # CHANGED: Use datetime
+                )
+                
+                # Check for duplicates
+                for i, (tx_dict, preview_tx) in enumerate(zip(df.to_dict('records'), preview_transactions)):
+                    tx_dict['transaction_hash'] = preview_tx.transaction_hash
+                    tx_dict['is_duplicate'] = transaction_repo.is_duplicate(preview_tx)
+                    tx_dict['temp_id'] = str(uuid.uuid4())  # Generate fresh temp_id
+                    tx_dict['original_filename'] = original_filename
+                
+                transactions = df.to_dict('records')
                 all_transactions.extend(transactions)
                 files_info[original_filename] = len(transactions)
                 
+                print(f"🔍 Added {len(transactions)} transactions to session")
+                
+                # Filter for Misc transactions that are not duplicates
                 for tx in transactions:
-                    if tx.get('Category') == 'Misc' and not tx.get('is_duplicate', False):  # NEW: Skip duplicates
+                    if tx.get('Category') == 'Misc' and not tx.get('is_duplicate', False):
                         try:
                             # Convert date string to date object
                             if isinstance(tx['Date'], str):
@@ -433,12 +466,14 @@ async def preview_upload(
                             )
                             all_misc_transactions.append(preview)
                             
-                        except Exception:
-                            # Skip transactions that can't be processed
+                        except Exception as e:
+                            print(f"🔍 Error creating preview: {e}")
                             continue
                             
-        except Exception:
-            # Skip files that can't be processed
+        except Exception as e:
+            print(f"🔍 Error processing file {original_filename}: {e}")
+            import traceback
+            traceback.print_exc()
             continue
         finally:
             # Clean up the temporary file
@@ -446,6 +481,8 @@ async def preview_upload(
                 os.unlink(temp_file_path)
             except:
                 pass
+    
+    print(f"🔍 Final counts: {len(all_transactions)} total, {len(all_misc_transactions)} misc")
     
     # Store session data
     upload_sessions[session_id] = {
@@ -461,7 +498,7 @@ async def preview_upload(
         data=FilePreviewResponse(
             session_id=session_id,
             total_transactions=len(all_transactions),
-            misc_transactions=all_misc_transactions,  # Now only contains non-duplicate Misc transactions
+            misc_transactions=all_misc_transactions,
             requires_review=len(all_misc_transactions) > 0,
             files_processed=len(files_info)
         )
@@ -475,64 +512,135 @@ async def confirm_upload(
     monthly_summary_repo: MonthlySummaryRepository = Depends(get_monthly_summary_repository)
 ):
     """
-    Confirm and save uploaded transactions with reviewed categories
-    Updated for proper DATE handling and transaction details
+    Confirm and save uploaded transactions with timestamp-based duplicate detection
     """
+    print("🔍 confirm_upload called")
+    
     # Get session data
     session_data = upload_sessions.get(confirmation.session_id)
     if not session_data:
+        print("🔍 ERROR: Session not found")
         raise APIError(
             status_code=404,
             detail="Upload session not found or expired",
             error_code="SESSION_NOT_FOUND"
         )
     
+    print(f"🔍 Session data keys: {list(session_data.keys())}")
+    if 'transactions' in session_data:
+        print(f"🔍 Session contains {len(session_data['transactions'])} transactions")
+        if session_data['transactions']:
+            first_session_tx = session_data['transactions'][0]
+            print(f"🔍 First session transaction keys: {list(first_session_tx.keys())}")
+            print(f"🔍 First session transaction desc: {first_session_tx.get('Description', 'NO DESC')[:30]}")
+    else:
+        print("🔍 ERROR: No 'transactions' key in session data")
+        return ApiResponse.success(
+            data=EnhancedUploadSummaryResponse(
+                files_processed=0,
+                total_transactions=0,
+                new_transactions=0,
+                duplicate_transactions=0,
+                transactions_by_file={},
+                message="No transactions found in session",
+                processed_transactions=[]
+            )
+        )
+    
+    # Generate unique batch ID and precise import timestamp for this upload
+    import_batch_id = str(uuid.uuid4())
+    import_timestamp = datetime.now()
+    
+    print(f"🔍 NEW UPLOAD - batch_id: {import_batch_id}")
+    print(f"🔍 NEW UPLOAD - import_timestamp: {import_timestamp}")
+    
     # Apply category updates
     category_map = {cu.temp_id: cu.new_category for cu in confirmation.category_updates}
+    print(f"🔍 Category updates: {len(category_map)} items")
     
     transactions_to_save = []
-    processed_transactions = []  # NEW: Track all processed transactions
+    processed_transactions = []
     
-    for tx_data in session_data['transactions']:
-        # Track if this transaction was manually reviewed
-        was_reviewed = tx_data['temp_id'] in category_map
-        
-        # Update category if it was reviewed
-        if was_reviewed:
-            tx_data['Category'] = category_map[tx_data['temp_id']]
-        
-        # Parse date properly
-        tx_date = pd.to_datetime(tx_data['Date']).date()
-        
-        # Create Transaction object
-        transaction = Transaction(
-            date=tx_date,
-            description=str(tx_data['Description']),
-            amount=Decimal(str(tx_data['Amount'])),
-            category=str(tx_data['Category']),
-            source=str(tx_data['source']),
-            transaction_hash=str(tx_data['transaction_hash']),
-            month_str=tx_date.strftime('%Y-%m')
+    print(f"🔍 Processing {len(session_data['transactions'])} transactions...")
+    
+    for i, tx_data in enumerate(session_data['transactions']):
+        try:
+            print(f"🔍 Processing transaction {i+1}: {tx_data.get('Description', 'NO DESC')[:30]}")
+            
+            # Check if temp_id exists before using it
+            temp_id = tx_data.get('temp_id')
+            was_reviewed = temp_id is not None and temp_id in category_map
+            
+            # Update category if it was reviewed
+            if was_reviewed:
+                print(f"🔍 Updating category from {tx_data.get('Category')} to {category_map[temp_id]}")
+                tx_data['Category'] = category_map[temp_id]
+            
+            # Parse date properly
+            tx_date = pd.to_datetime(tx_data['Date']).date()
+            print(f"🔍 Parsed date: {tx_date}")
+            
+            # Create Transaction object with batch info
+            transaction = Transaction(
+                date=tx_date,
+                description=str(tx_data['Description']),
+                amount=Decimal(str(tx_data['Amount'])),
+                category=str(tx_data['Category']),
+                source=str(tx_data['source']),
+                transaction_hash="",  # Will be generated after ranking
+                month_str=tx_date.strftime('%Y-%m'),
+                import_timestamp=import_timestamp,
+                import_batch_id=import_batch_id
+            )
+            
+            print(f"🔍 Created transaction: {transaction.description[:30]}, base_hash: {transaction.base_hash}")
+            transactions_to_save.append(transaction)
+            
+            processed_tx = ProcessedTransaction(
+                date=tx_date,
+                description=str(tx_data['Description']),
+                amount=Decimal(str(tx_data['Amount'])),
+                category=str(tx_data['Category']),
+                source=str(tx_data['source']),
+                original_filename=str(tx_data.get('original_filename', 'unknown')),
+                was_duplicate=False,
+                was_reviewed=was_reviewed
+            )
+            processed_transactions.append(processed_tx)
+            
+        except Exception as e:
+            print(f"🔍 ERROR processing transaction {i+1}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            continue
+    
+    print(f"🔍 Final counts: {len(transactions_to_save)} to save, {len(processed_transactions)} processed")
+    
+    if not transactions_to_save:
+        print("🔍 ERROR: No transactions to save!")
+        return ApiResponse.success(
+            data=EnhancedUploadSummaryResponse(
+                files_processed=len(session_data.get('files_info', {})),
+                total_transactions=0,
+                new_transactions=0,
+                duplicate_transactions=0,
+                transactions_by_file=session_data.get('files_info', {}),
+                message="No valid transactions to process",
+                processed_transactions=[]
+            )
         )
-        transactions_to_save.append(transaction)
-        
-        processed_tx = ProcessedTransaction(
-            date=tx_date,
-            description=str(tx_data['Description']),
-            amount=Decimal(str(tx_data['Amount'])),
-            category=str(tx_data['Category']),
-            source=str(tx_data['source']),
-            original_filename=str(tx_data.get('original_filename', 'unknown')),
-            was_duplicate=False,  # Will be updated based on save results
-            was_reviewed=was_reviewed
-        )
-        processed_transactions.append(processed_tx)
     
-    # Save all transactions (now returns duplicate hashes)
-    records_added, affected_data, duplicate_hashes = transaction_repo.save_many(transactions_to_save)
+    # Save all transactions with timestamp-based duplicate detection
+    print(f"🔍 Calling save_many with {len(transactions_to_save)} transactions")
+    records_added, affected_data, duplicate_hashes = transaction_repo.save_many(
+        transactions_to_save, import_batch_id, import_timestamp
+    )
     
+    print(f"🔍 save_many returned: {records_added} added, {len(duplicate_hashes)} duplicates")
+    
+    # Update processed transactions with duplicate status
     for processed_tx, original_tx in zip(processed_transactions, transactions_to_save):
-        if original_tx.transaction_hash in duplicate_hashes:
+        if original_tx.base_hash in duplicate_hashes:
             processed_tx.was_duplicate = True
     
     # Update monthly summaries
@@ -549,16 +657,18 @@ async def confirm_upload(
     else:
         message = f"Successfully saved {records_added} new transactions"
     
+    print(f"🔍 Final message: {message}")
+    
     # Clean up session
     del upload_sessions[confirmation.session_id]
     
     return ApiResponse.success(
         data=EnhancedUploadSummaryResponse(
-            files_processed=len(session_data['files_info']),
+            files_processed=len(session_data.get('files_info', {})),
             total_transactions=total_transactions,
             new_transactions=records_added,
             duplicate_transactions=duplicate_count,
-            transactions_by_file=session_data['files_info'],
+            transactions_by_file=session_data.get('files_info', {}),
             message=message,
             processed_transactions=processed_transactions
         )

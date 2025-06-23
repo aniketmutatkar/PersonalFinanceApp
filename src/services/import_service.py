@@ -110,14 +110,7 @@ class ImportService:
     
     def process_bank_file(self, file_path: str, original_filename: str = None) -> pd.DataFrame:
         """
-        Process a bank transaction file based on its name.
-        
-        Args:
-            file_path: Path to the bank file
-            original_filename: Original filename before server processing (optional)
-            
-        Returns:
-            DataFrame with processed transactions
+        Process a bank transaction file - updated for rank-based duplicate detection
         """
         # SAFETY FIX: Handle filename properly
         if original_filename and isinstance(original_filename, str) and original_filename.strip():
@@ -174,10 +167,14 @@ class ImportService:
         # Add Month column
         df['Month'] = pd.to_datetime(df['Date']).dt.to_period('M')
         
-        # Add transaction hash
-        df['transaction_hash'] = df.apply(lambda row: Transaction.create_hash(
+        # CHANGED: Generate base_hash only (no rank/batch info yet)
+        df['base_hash'] = df.apply(lambda row: Transaction.create_base_hash(
             row['Date'], row['Description'], row['Amount'], row['source']
         ), axis=1)
+        
+        # CHANGED: Don't generate full transaction_hash here - that happens during save
+        # We'll add a placeholder that gets replaced later
+        df['transaction_hash'] = df['base_hash']  # Temporary placeholder
         
         # Add month string
         df['month_str'] = df['Month'].astype(str)
@@ -186,10 +183,7 @@ class ImportService:
     
     def process_raw_directory(self) -> Optional[pd.DataFrame]:
         """
-        Process all files in the raw directory.
-        
-        Returns:
-            DataFrame with all processed transactions or None if no files
+        Process all files in the raw directory with rank-based duplicate detection.
         """
         raw_dir = self.config_manager.raw_dir
         
@@ -199,7 +193,7 @@ class ImportService:
         
         # Process each file in the raw directory
         all_dfs = []
-        all_affected_data = {}  # Combined affected months and categories
+        all_affected_data = {}
         
         for filename in os.listdir(raw_dir):
             if filename.endswith(('.csv', '.CSV')):
@@ -207,67 +201,49 @@ class ImportService:
                 
                 df = self.process_bank_file(file_path)
                 if df is not None:
-                    # Get existing hashes from repository
-                    existing_hashes = self.transaction_repository.get_existing_hashes()
+                    # Convert DataFrame to Transaction objects for processing
+                    from datetime import date as date_type
+                    import uuid
                     
-                    # Create a mask for new transactions only
-                    new_transactions_mask = ~df['transaction_hash'].isin(existing_hashes)
-                    
-                    # Only run human intervention on NEW Misc transactions
-                    if new_transactions_mask.any():
-                        # Create a temporary dataframe with just the new transactions
-                        new_df = df[new_transactions_mask].copy()
-                        # Only categorize if we have new "Misc" transactions
-                        if (new_df['Category'] == 'Misc').any():
-                            # In the simplified version, this would be handled separately
-                            # For the POC, we'll just print the misc transactions
-                            print(f"Found {(new_df['Category'] == 'Misc').sum()} new Misc transactions.")
-                        
-                        # Update the original dataframe with the new categories
-                        df.update(new_df)
-                    
-                    all_dfs.append(df)
-                    
-                    # Convert to Transaction objects
                     transactions = []
+                    import_batch_id = str(uuid.uuid4())
+                    import_date = date_type.today()
+                    
                     for _, row in df.iterrows():
+                        tx_date = pd.to_datetime(row['Date']).date()
                         transaction = Transaction(
-                            date=pd.to_datetime(row['Date']).date(),
+                            date=tx_date,
                             description=str(row['Description']),
-                            amount=row['Amount'],
+                            amount=Decimal(str(row['Amount'])),
                             category=str(row['Category']),
                             source=str(row['source']),
-                            transaction_hash=str(row['transaction_hash']),
-                            month_str=str(row['month_str'])
+                            transaction_hash="",  # Will be generated after ranking
+                            month_str=tx_date.strftime('%Y-%m'),
+                            import_date=import_date,
+                            import_batch_id=import_batch_id,
+                            base_hash=str(row['base_hash'])
                         )
                         transactions.append(transaction)
                     
-                    # Save to database and track affected months/categories
-                    records_added, affected_data = self.transaction_repository.save_many(transactions)
+                    # Save with rank-based duplicate detection
+                    records_added, affected_data, duplicate_hashes = self.transaction_repository.save_many(
+                        transactions, import_batch_id, import_date
+                    )
                     
-                    # Merge affected data with main tracking dict
-                    for month, categories in affected_data.items():
-                        if month not in all_affected_data:
-                            all_affected_data[month] = set()
-                        all_affected_data[month].update(categories)
+                    # Update monthly summaries if needed
+                    if affected_data:
+                        self.monthly_summary_repository.update_from_transactions(affected_data, self.categories)
+                        all_affected_data.update(affected_data)
                     
-                    print(f"Added {records_added} new transactions from {filename}")
+                    print(f"Processed {filename}: {records_added} new transactions, {len(duplicate_hashes)} duplicates")
+                    all_dfs.append(df)
         
-        # Update monthly summary for affected months and categories
-        if all_affected_data:
-            print(f"Months affected by new transactions: {sorted(all_affected_data.keys())}")
-            for month, categories in all_affected_data.items():
-                cat_list = sorted(categories)
-                print(f"  {month}: {cat_list}")
-            
-            self.monthly_summary_repository.update_from_transactions(all_affected_data, self.categories)
-        
-        # Return combined dataframe if we have any data
         if all_dfs:
-            return pd.concat(all_dfs, ignore_index=True)
+            combined_df = pd.concat(all_dfs, ignore_index=True)
+            return combined_df
         
         return None
-    
+
     def import_historical_data(self, force: bool = False) -> bool:
         """
         Import historical data from Excel file.

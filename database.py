@@ -27,11 +27,11 @@ def get_db_session():
 
 
 class TransactionModel(Base):
-    """SQLAlchemy model for Transaction table with proper DATE column"""
+    """SQLAlchemy model for Transaction table with timestamp-based duplicate detection"""
     __tablename__ = 'transactions'
     
     id = Column(Integer, primary_key=True)
-    date = Column(Date, nullable=False)  # Now using proper DATE column
+    date = Column(Date, nullable=False)  # Transaction date
     description = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     category = Column(String, nullable=False)
@@ -39,9 +39,10 @@ class TransactionModel(Base):
     month = Column(String, nullable=False)  # Month in YYYY-MM format
     transaction_hash = Column(String, unique=True, nullable=False)
     
-    def __repr__(self):
-        return f"<Transaction(date='{self.date}', amount={self.amount}, category='{self.category}')>"
-
+    import_timestamp = Column(DateTime, nullable=True)  # CHANGED: When this batch was imported (exact time)
+    rank_within_batch = Column(Integer, nullable=True)  # 1,2,3 for same base_hash
+    import_batch_id = Column(String, nullable=True)  # UUID per upload session
+    base_hash = Column(String, nullable=True)  # Core transaction signature
 
 class InvestmentAccountModel(Base):
     """SQLAlchemy model for Investment Accounts"""
@@ -292,6 +293,75 @@ def add_bank_balance_constraints():
     finally:
         session.close()
 
+def add_timestamp_based_duplicate_detection():
+    """Update database schema from date-based to timestamp-based duplicate detection"""
+    session = get_db_session()
+    try:
+        print("🔄 Migrating from import_date to import_timestamp...")
+        
+        # Check if import_timestamp already exists
+        columns_query = session.execute(text("PRAGMA table_info(transactions)")).fetchall()
+        column_names = [col[1] for col in columns_query]
+        
+        if 'import_timestamp' not in column_names:
+            # Add new timestamp column
+            session.execute(text("ALTER TABLE transactions ADD COLUMN import_timestamp DATETIME"))
+            print("   ✅ Added import_timestamp column")
+            
+            # Migrate existing import_date data to import_timestamp (if any exists)
+            if 'import_date' in column_names:
+                session.execute(text("""
+                UPDATE transactions 
+                SET import_timestamp = datetime(import_date || ' 12:00:00') 
+                WHERE import_date IS NOT NULL
+                """))
+                print("   ✅ Migrated existing import_date data to import_timestamp")
+            
+            session.commit()
+        else:
+            print("   ℹ️  import_timestamp column already exists")
+        
+        # Add other columns if they don't exist
+        new_columns = [
+            ("rank_within_batch", "ALTER TABLE transactions ADD COLUMN rank_within_batch INTEGER"),
+            ("import_batch_id", "ALTER TABLE transactions ADD COLUMN import_batch_id TEXT"), 
+            ("base_hash", "ALTER TABLE transactions ADD COLUMN base_hash TEXT")
+        ]
+        
+        for col_name, sql in new_columns:
+            if col_name not in column_names:
+                try:
+                    session.execute(text(sql))
+                    session.commit()
+                    print(f"   ✅ Added {col_name} column")
+                except Exception as e:
+                    if "duplicate column name" not in str(e).lower():
+                        print(f"   ⚠️  Warning adding {col_name}: {str(e)}")
+                    session.rollback()
+            else:
+                print(f"   ℹ️  {col_name} column already exists")
+        
+        # Add/update indexes for duplicate detection queries
+        try:
+            session.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_transactions_base_hash_rank_timestamp 
+            ON transactions(base_hash, rank_within_batch, import_timestamp)
+            """))
+            session.commit()
+            print("   ✅ Added optimized index for duplicate detection")
+        except Exception as e:
+            print(f"   ⚠️  Index creation warning: {str(e)}")
+            session.rollback()
+        
+        print("✅ Timestamp-based duplicate detection migration complete!")
+        
+    except Exception as e:
+        session.rollback()
+        print(f"❌ Error in timestamp migration: {str(e)}")
+        raise
+    finally:
+        session.close()
+
 def init_database(categories):
     """Initialize the SQLite database with required tables"""
     print("Initializing database...")
@@ -315,7 +385,10 @@ def init_database(categories):
     
     add_enhanced_duplicate_constraints()
     
-    print("Database initialized successfully with enhanced duplicate detection.")
+    # UPDATED: Add timestamp-based duplicate detection
+    add_timestamp_based_duplicate_detection()
+    
+    print("Database initialized successfully with timestamp-based duplicate detection.")
 
 def add_portfolio_constraints():
     """Add database constraints for portfolio tables"""
@@ -382,5 +455,41 @@ def add_enhanced_duplicate_constraints():
     except Exception as e:
         session.rollback()
         print(f"Warning: Could not add enhanced constraints: {str(e)}")
+    finally:
+        session.close()
+
+def add_rank_based_duplicate_detection():
+    """Add new columns for rank-based duplicate detection"""
+    session = get_db_session()
+    try:
+        new_columns = [
+            "ALTER TABLE transactions ADD COLUMN import_date DATE",
+            "ALTER TABLE transactions ADD COLUMN rank_within_batch INTEGER",
+            "ALTER TABLE transactions ADD COLUMN import_batch_id TEXT", 
+            "ALTER TABLE transactions ADD COLUMN base_hash TEXT"
+        ]
+        
+        for sql in new_columns:
+            try:
+                session.execute(text(sql))
+                session.commit()
+            except Exception as e:
+                if "duplicate column name" not in str(e).lower():
+                    print(f"Warning adding column: {str(e)}")
+                session.rollback()
+        
+        # Add index for duplicate detection queries
+        session.execute(text("""
+        CREATE INDEX IF NOT EXISTS idx_transactions_base_hash_rank 
+        ON transactions(base_hash, rank_within_batch)
+        """))
+        session.commit()
+        
+        print("Added rank-based duplicate detection columns and indexes")
+        
+    except Exception as e:
+        session.rollback()
+        print(f"Error adding rank-based columns: {str(e)}")
+        raise
     finally:
         session.close()
