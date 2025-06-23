@@ -4,55 +4,71 @@ Updated to standardize date formats for consistent hashing.
 """
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date as Date, datetime
 from decimal import Decimal
 from typing import Optional, Dict, List
 import hashlib
 import pandas as pd
+import uuid
 
 
 @dataclass
 class Transaction:
     """Represents a financial transaction"""
-    date: date
+    # Keep ALL existing fields exactly as they are:
+    date: Date
     description: str
     amount: Decimal
     category: str
-    source: str  # e.g., 'chase', 'wells', 'citi'
+    source: str
     transaction_hash: str
     id: Optional[int] = None
     month_str: Optional[str] = None
     
-    def __post_init__(self):
-        """Initialize month string if not provided"""
-        if self.month_str is None and isinstance(self.date, date):
-            self.month_str = self.date.strftime("%Y-%m")
+    # ADD these new fields:
+    base_hash: str = field(init=False)  # Will be auto-generated
+    rank_within_batch: int = field(default=1)
+    import_date: Date = field(default_factory=lambda: datetime.now().date())
+    import_batch_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     
-    @classmethod
-    def create_hash(cls, date_str, description, amount, source):
-        """
-        Create a unique hash for a transaction to prevent duplicates.
-        Always standardizes dates to MM/dd/yyyy format regardless of input.
-        """
+    def __post_init__(self):
+        """Initialize computed fields"""
+        # Keep existing logic:
+        if self.month_str is None and isinstance(self.date, Date):
+            self.month_str = self.date.strftime("%Y-%m")
+        
+        # ADD: Generate base_hash automatically
+        self.base_hash = self._create_base_hash()
+        
+        # If transaction_hash is empty, generate it (for new transactions)
+        if not self.transaction_hash:
+            self.transaction_hash = self._create_full_hash()
+    
+    def _create_base_hash(self) -> str:
+        """Create base hash for duplicate detection: date + description + amount + source"""
         try:
-            # Standardize the date to MM/dd/yyyy format
-            if isinstance(date_str, str):
-                # Parse the date string using pandas (handles multiple formats)
-                parsed_date = pd.to_datetime(date_str)
-                standardized_date = parsed_date.strftime('%m/%d/%Y')
-            else:
-                # If it's already a date object, convert to MM/dd/yyyy
-                standardized_date = date_str.strftime('%m/%d/%Y')
-        except Exception as e:
-            # If parsing fails, use the original string (fallback)
-            print(f"Warning: Could not parse date '{date_str}', using as-is. Error: {e}")
-            standardized_date = str(date_str)
-        
-        # Create a string with key transaction data using standardized date
-        hash_string = f"{standardized_date}|{description}|{amount}|{source}"
-        
-        # Create a hash
-        return hashlib.md5(hash_string.encode()).hexdigest()
+            standardized_date = self.date.strftime('%m/%d/%Y')
+            normalized_desc = str(self.description).strip().upper()
+            normalized_amount = str(self.amount)
+            normalized_source = str(self.source).strip().lower()
+            
+            base_data = f"{standardized_date}|{normalized_desc}|{normalized_amount}|{normalized_source}"
+            return hashlib.sha256(base_data.encode()).hexdigest()[:16]
+        except Exception:
+            # Fallback
+            fallback_data = f"{self.date}|{self.description}|{self.amount}|{self.source}"
+            return hashlib.sha256(fallback_data.encode()).hexdigest()[:16]
+    
+    def _create_full_hash(self) -> str:
+        """Create full hash for database storage: base_hash + rank + batch_id"""
+        full_data = f"{self.base_hash}_rank{self.rank_within_batch}_batch{self.import_batch_id}"
+        return hashlib.sha256(full_data.encode()).hexdigest()[:16]
+    
+    def update_ranking(self, rank: int, batch_id: str):
+        """Update rank and batch ID, then regenerate full hash"""
+        self.rank_within_batch = rank
+        self.import_batch_id = batch_id
+        self.transaction_hash = self._create_full_hash()
 
 
 @dataclass

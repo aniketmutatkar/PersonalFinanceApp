@@ -529,7 +529,7 @@ async def confirm_upload(
         processed_transactions.append(processed_tx)
     
     # Save all transactions (now returns duplicate hashes)
-    records_added, affected_data, duplicate_hashes = transaction_repo.save_many(transactions_to_save)
+    records_added, affected_data, duplicate_hashes = transaction_repo.save_many_with_ranking(transactions_to_save)
     
     for processed_tx, original_tx in zip(processed_transactions, transactions_to_save):
         if original_tx.transaction_hash in duplicate_hashes:

@@ -1,11 +1,14 @@
 # src/repositories/transaction_repository.py
 
 from typing import List, Dict, Set, Tuple, Optional
-from datetime import date
+from datetime import date, datetime
 import pandas as pd
 from decimal import Decimal
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import text
+from collections import defaultdict
+import uuid
+
 
 from src.models.models import Transaction
 from database import get_db_session, TransactionModel
@@ -15,27 +18,38 @@ class TransactionRepository:
     """Repository for transaction database operations"""
     
     def _create_transaction_from_row(self, row):
-        """
-        Helper method to create Transaction domain entity from database row.
-        Now handles proper DATE columns.
-        """
-        # Parse date from database - should be in YYYY-MM-DD format
+        """Create Transaction domain entity from database row - updated for ranking"""
+        # Parse date
         tx_date = row.date
         if isinstance(tx_date, str):
-            # Parse ISO date string
             from datetime import datetime
             tx_date = datetime.fromisoformat(tx_date).date()
         
-        return Transaction(
-            id=row.id,
+        # Parse import_date 
+        import_date = getattr(row, 'import_date', tx_date)
+        if isinstance(import_date, str):
+            import_date = datetime.fromisoformat(import_date).date()
+        
+        # Create transaction with ranking fields
+        transaction = Transaction(
             date=tx_date,
             description=row.description,
             amount=Decimal(str(row.amount)),
             category=row.category,
             source=row.source,
             transaction_hash=row.transaction_hash,
-            month_str=row.month
+            rank_within_batch=getattr(row, 'rank_within_batch', 1),
+            import_date=import_date,
+            import_batch_id=getattr(row, 'import_batch_id', 'legacy')
         )
+        
+        # Set computed fields from database
+        transaction.id = row.id
+        transaction.month_str = row.month
+        if hasattr(row, 'base_hash') and row.base_hash:
+            transaction.base_hash = row.base_hash
+        
+        return transaction
 
     def find_with_filters(
         self,
@@ -413,5 +427,116 @@ class TransactionRepository:
             
             # Extract hash values
             return [row[0] for row in result]
+        finally:
+            session.close()
+
+    def save_many_with_ranking(self, transactions: List[Transaction]) -> Tuple[int, Dict[str, Set[str]], List[str]]:
+        """
+        Save transactions with ranking-based duplicate detection.
+        This replaces save_many() for upload functionality.
+        """
+        if not transactions:
+            return 0, {}, []
+        
+        # Generate unique batch ID for this upload
+        batch_id = f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
+        import_date = datetime.now().date()
+        
+        # Step 1: Group by base_hash and assign ranks
+        self._assign_ranks_within_batch(transactions, batch_id, import_date)
+        
+        # Step 2: Save with pre-duplicate detection
+        records_added = 0
+        affected_data = {}
+        duplicate_hashes = []
+        
+        session = get_db_session()
+        
+        try:
+            for transaction in transactions:
+                # Check for duplicates before saving
+                if self._is_duplicate(transaction):
+                    duplicate_hashes.append(transaction.base_hash)
+                    continue
+                
+                try:
+                    # Save to database with all ranking fields
+                    transaction_model = TransactionModel(
+                        date=transaction.date,
+                        description=transaction.description,
+                        amount=float(transaction.amount),
+                        category=transaction.category,
+                        source=transaction.source,
+                        month=transaction.month_str,
+                        transaction_hash=transaction.transaction_hash,
+                        base_hash=transaction.base_hash,
+                        rank_within_batch=transaction.rank_within_batch,
+                        import_date=transaction.import_date,
+                        import_batch_id=transaction.import_batch_id
+                    )
+                    
+                    session.add(transaction_model)
+                    session.commit()
+                    records_added += 1
+                    
+                    # Update domain entity with generated ID
+                    transaction.id = transaction_model.id
+                    
+                    # Track affected months/categories
+                    month = transaction.month_str
+                    category = transaction.category
+                    
+                    if month not in affected_data:
+                        affected_data[month] = set()
+                    affected_data[month].add(category)
+                    
+                except IntegrityError:
+                    # Unexpected collision - treat as duplicate
+                    session.rollback()
+                    duplicate_hashes.append(transaction.base_hash)
+                    
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+        
+        return records_added, affected_data, duplicate_hashes
+    
+    def _assign_ranks_within_batch(self, transactions: List[Transaction], batch_id: str, import_date: date):
+        """Group by base_hash and assign ranks 1,2,3 within same batch"""
+        # Group transactions by base_hash
+        groups_by_base_hash = defaultdict(list)
+        
+        for transaction in transactions:
+            transaction.import_batch_id = batch_id
+            transaction.import_date = import_date
+            groups_by_base_hash[transaction.base_hash].append(transaction)
+        
+        # Assign ranks within each group
+        for base_hash, tx_group in groups_by_base_hash.items():
+            for rank, transaction in enumerate(tx_group, start=1):
+                transaction.update_ranking(rank, batch_id)
+    
+    def _is_duplicate(self, transaction: Transaction) -> bool:
+        """Check if transaction is duplicate based on base_hash + rank from different batch"""
+        session = get_db_session()
+        
+        try:
+            query = text("""
+                SELECT id FROM transactions 
+                WHERE base_hash = :base_hash 
+                AND rank_within_batch = :rank 
+                AND import_batch_id != :current_batch_id
+            """)
+            
+            result = session.execute(query, {
+                "base_hash": transaction.base_hash,
+                "rank": transaction.rank_within_batch,
+                "current_batch_id": transaction.import_batch_id
+            }).fetchone()
+            
+            return result is not None
+            
         finally:
             session.close()
