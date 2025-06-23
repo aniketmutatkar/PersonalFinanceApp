@@ -17,25 +17,31 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-function calculateTrend(current: number, previous: number): { direction: 'up' | 'down' | 'neutral', value: string, isPositive: boolean } {
-  // Handle missing or invalid data
+function calculateTrend(current: number, previous: number, isSpending: boolean = false): { direction: 'up' | 'down' | 'neutral', value: string, isPositive: boolean } {
   if (!previous || previous === 0 || !current || isNaN(current) || isNaN(previous)) {
     return { direction: 'neutral', value: 'No previous data', isPositive: true };
   }
   
   const percentChange = ((current - previous) / Math.abs(previous)) * 100;
   
-  // Handle edge cases
   if (!isFinite(percentChange) || isNaN(percentChange)) {
     return { direction: 'neutral', value: 'No previous data', isPositive: true };
   }
   
   const direction = percentChange > 5 ? 'up' : percentChange < -5 ? 'down' : 'neutral';
   
+  // FIXED: For spending, down is good. For investments and net savings, up is good
+  let isPositive;
+  if (isSpending) {
+    isPositive = percentChange <= 0; // For spending, down/same is good
+  } else {
+    isPositive = percentChange >= 0; // For investments/savings, up/same is good
+  }
+  
   return {
     direction,
     value: `${Math.abs(percentChange).toFixed(1)}%`,
-    isPositive: percentChange <= 0 // For spending, down is good
+    isPositive
   };
 }
 
@@ -52,20 +58,20 @@ export default function MonthlyMetrics({ summary, previousSummary }: MonthlyMetr
   // Calculate key metrics
   const totalSpending = summary.total_minus_invest;
   const totalInvestments = summary.investment_total;
-  const totalIncome = Math.abs(summary.category_totals.Pay || 0);
+  const totalIncome = summary.category_totals.Pay || 0;
   const netSavings = totalIncome - totalSpending - totalInvestments;
   const burnRate = totalSpending / 30; // Daily burn rate
 
   // Previous month metrics for comparison
   const prevSpending = previousSummary?.total_minus_invest || 0;
   const prevInvestments = previousSummary?.investment_total || 0;
-  const prevIncome = Math.abs(previousSummary?.category_totals?.Pay || 0);
+  const prevIncome = previousSummary?.category_totals?.Pay || 0;
   const prevNetSavings = prevIncome - prevSpending - prevInvestments;
   
   // Calculate trends with better error handling
-  const spendingTrend = calculateTrend(totalSpending, prevSpending);
-  const investmentTrend = calculateTrend(totalInvestments, prevInvestments);
-  const netPositionTrend = calculateTrend(netSavings, prevNetSavings);
+  const spendingTrend = calculateTrend(totalSpending, prevSpending, true); // Spending: down is good
+  const investmentTrend = calculateTrend(totalInvestments, prevInvestments, false); // Investment: up is good
+  const netPositionTrend = calculateTrend(netSavings, prevNetSavings, false); // Net savings: up is good
   
   const prevMonthName = previousSummary ? getPreviousMonthName(summary.month_year) : 'Previous';
 

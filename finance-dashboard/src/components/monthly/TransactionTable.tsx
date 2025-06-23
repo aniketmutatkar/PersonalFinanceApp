@@ -1,4 +1,4 @@
-// src/components/monthly/TransactionTable.tsx - Enhanced Version
+// src/components/monthly/TransactionTable.tsx - MINIMAL FIXES ONLY
 import React, { useState, useMemo } from 'react';
 import { Search, Filter, TrendingDown, TrendingUp, Calendar } from 'lucide-react';
 import { Transaction } from '../../types/api';
@@ -40,10 +40,8 @@ export default function TransactionTable({ transactions, isLoading }: Transactio
   const [selectedCategory, setSelectedCategory] = useState<string>('');
 
   const { categories, filteredAndSortedTransactions, summary } = useMemo(() => {
-    // Filter out payment/income categories and get unique categories
     const spendingTransactions = transactions.filter(t => 
-      !['Pay', 'Payment', 'Paycheck', 'Salary', 'Income'].includes(t.category) && 
-      t.amount > 0 // Only positive amounts (expenses)
+      !['Pay', 'Payment', 'Paycheck', 'Salary', 'Income'].includes(t.category)
     );
     
     const uniqueCategories = Array.from(new Set(spendingTransactions.map(t => t.category))).sort();
@@ -61,8 +59,8 @@ export default function TransactionTable({ transactions, isLoading }: Transactio
       let bValue: any = b[sortField];
       
       if (sortField === 'amount') {
-        aValue = Math.abs(aValue);
-        bValue = Math.abs(bValue);
+        aValue = aValue;
+        bValue = bValue;
       }
       
       if (sortField === 'date') {
@@ -182,24 +180,26 @@ export default function TransactionTable({ transactions, isLoading }: Transactio
         </div>
 
         {/* Enhanced Filters */}
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col sm:flex-row gap-4">
+          {/* Search */}
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
               placeholder="Search transactions..."
+              className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
           
+          {/* Category Filter */}
           <div className="relative">
             <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <select
+              className="pl-10 pr-8 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none min-w-[140px]"
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="pl-10 pr-8 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none cursor-pointer"
             >
               <option value="">All Categories</option>
               {categories.map(category => (
@@ -210,11 +210,11 @@ export default function TransactionTable({ transactions, isLoading }: Transactio
         </div>
       </div>
 
-      {/* Enhanced Table */}
+      {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-600">
+            <tr className="border-b border-gray-700">
               <th 
                 className="text-left py-3 px-4 text-gray-400 text-sm font-medium cursor-pointer hover:text-white transition-colors"
                 onClick={() => handleSort('date')}
@@ -282,8 +282,9 @@ export default function TransactionTable({ transactions, isLoading }: Transactio
                   </span>
                 </td>
                 <td className="py-4 px-4 text-right">
-                  <span className="text-white font-medium">
-                    {formatCurrency(Math.abs(transaction.amount))}
+                  {/* FIXED: Show proper +/- signs with color coding */}
+                  <span className={`font-medium ${transaction.amount >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                    {transaction.amount >= 0 ? '+' : ''}{formatCurrency(transaction.amount)}
                   </span>
                 </td>
               </tr>
