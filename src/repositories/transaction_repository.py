@@ -205,24 +205,10 @@ class TransactionRepository:
         """
         Save multiple transactions with timestamp-based duplicate detection.
         """
-        print(f"🔍 save_many called")
-        print(f"🔍   transactions: {len(transactions) if transactions else 'None'}")
-        print(f"🔍   import_batch_id: {import_batch_id}")
-        print(f"🔍   import_timestamp: {import_timestamp} (type: {type(import_timestamp)})")
-        
         if not transactions:
-            print("🔍 No transactions provided - returning early")
             return 0, {}, []
-        
-        # Show first few transactions
-        for i, tx in enumerate(transactions[:3]):
-            print(f"🔍 Transaction {i+1}: {tx.description[:30]}")
-            print(f"🔍   base_hash: {tx.base_hash}")
-            print(f"🔍   import_timestamp: {tx.import_timestamp}")
-            print(f"🔍   import_batch_id: {tx.import_batch_id}")
-        
+
         # Step 1: Assign ranks within this batch
-        print("🔍 Calling assign_ranks_within_batch...")
         self.assign_ranks_within_batch(transactions, import_batch_id, import_timestamp)
         
         session = get_db_session()
@@ -231,18 +217,13 @@ class TransactionRepository:
         duplicate_hashes = []
         
         try:
-            print(f"🔍 Starting duplicate check and save for {len(transactions)} transactions...")
             
             # Step 2: Check each transaction for duplicates before saving
             for i, transaction in enumerate(transactions):
-                print(f"🔍 Processing transaction {i+1}/{len(transactions)}: {transaction.description[:30]}")
-                print(f"🔍   rank: {transaction.rank_within_batch}, hash: {transaction.transaction_hash}")
                 
                 is_dup = self.is_duplicate(transaction)
-                print(f"🔍   is_duplicate: {is_dup}")
                 
                 if not is_dup:
-                    print("🔍   Saving transaction...")
                     # Not a duplicate - save it
                     transaction_model = TransactionModel(
                         date=transaction.date,
@@ -262,7 +243,6 @@ class TransactionRepository:
                         session.add(transaction_model)
                         session.commit()
                         records_added += 1
-                        print(f"🔍   ✅ Saved with ID: {transaction_model.id}")
                         
                         # Update domain entity with generated ID
                         transaction.id = transaction_model.id
@@ -276,20 +256,16 @@ class TransactionRepository:
                         affected_data[month].add(category)
                         
                     except IntegrityError as e:
-                        print(f"🔍   ❌ IntegrityError saving transaction: {str(e)}")
                         session.rollback()
                         duplicate_hashes.append(transaction.base_hash)
                     except Exception as e:
-                        print(f"🔍   ❌ Error saving transaction: {str(e)}")
                         session.rollback()
                         raise e
                 else:
-                    print("🔍   ❌ Marked as duplicate")
                     # Mark as duplicate
                     duplicate_hashes.append(transaction.base_hash)
                     
         except Exception as e:
-            print(f"🔍 ❌ Error in save_many: {str(e)}")
             session.rollback()
             import traceback
             traceback.print_exc()
@@ -297,8 +273,6 @@ class TransactionRepository:
         finally:
             session.close()
 
-        print(f"🔍 save_many complete: {records_added} saved, {len(duplicate_hashes)} duplicates")
-        print(f"🔍 affected_data: {affected_data}")
         return records_added, affected_data, duplicate_hashes
 
     def update(self, transaction_id: int, updates: Dict[str, any]) -> Tuple[Transaction, Set[str]]:
@@ -485,9 +459,7 @@ class TransactionRepository:
         Assign ranks to transactions within the same batch based on base_hash groups.
         """
         from collections import defaultdict
-        
-        print(f"🔍 assign_ranks_within_batch called with {len(transactions)} transactions")
-        
+
         # Group transactions by base_hash
         base_hash_groups = defaultdict(list)
         
@@ -497,24 +469,17 @@ class TransactionRepository:
                 transaction.base_hash = Transaction.create_base_hash(
                     transaction.date, transaction.description, transaction.amount, transaction.source
                 )
-                print(f"🔍 Generated base_hash: {transaction.base_hash} for {transaction.description[:30]}")
             
             base_hash_groups[transaction.base_hash].append(transaction)
         
-        print(f"🔍 Created {len(base_hash_groups)} base_hash groups:")
-        for base_hash, tx_group in base_hash_groups.items():
-            print(f"🔍   {base_hash}: {len(tx_group)} transactions")
-        
         # Assign ranks within each group
         for base_hash, tx_group in base_hash_groups.items():
-            print(f"🔍 Assigning ranks for base_hash {base_hash}:")
             for rank, transaction in enumerate(tx_group, 1):
                 transaction.rank_within_batch = rank
                 transaction.import_batch_id = import_batch_id
                 transaction.import_timestamp = import_timestamp
                 # Generate full hash with rank and batch info
                 transaction.generate_full_hash()
-                print(f"🔍   Rank {rank}: {transaction.description[:30]} -> hash: {transaction.transaction_hash}")
 
     def is_duplicate(self, transaction: Transaction) -> bool:
         """
@@ -522,10 +487,8 @@ class TransactionRepository:
         UPDATED: Uses import_timestamp for more precise duplicate detection.
         Returns True if this transaction appears to be a re-upload.
         """
-        print(f"🔍 Checking duplicate for: base_hash={transaction.base_hash}, rank={transaction.rank_within_batch}")
         
         if not transaction.base_hash or not transaction.rank_within_batch:
-            print(f"🔍 Missing data - base_hash: {transaction.base_hash}, rank: {transaction.rank_within_batch}")
             return False
         
         existing = self.find_by_base_hash_and_rank(
@@ -534,14 +497,11 @@ class TransactionRepository:
         )
         
         if existing:
-            print(f"🔍 Found existing: import_timestamp={existing.import_timestamp} vs new={transaction.import_timestamp}")
             
             # UPDATED LOGIC: Different timestamps = different uploads = duplicate
             if existing.import_timestamp != transaction.import_timestamp:
-                print(f"🔍 DUPLICATE DETECTED! (different upload timestamps)")
                 return True
             else:
-                print(f"🔍 Same timestamp - part of same upload batch")
                 return False
         else:
             print(f"🔍 No existing transaction found")
