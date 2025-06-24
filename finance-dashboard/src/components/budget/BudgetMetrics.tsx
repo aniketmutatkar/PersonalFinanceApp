@@ -256,10 +256,6 @@ export default function BudgetMetrics({ data, type, year, monthYear, previousYea
             metrics.healthScore > 40 ? 'Fair year' : 'Challenging year'
           }`}
           variant="hero"
-          trend={metrics.yearOverYearTrends ? {
-            value: metrics.yearOverYearTrends.healthScore.display,
-            direction: metrics.yearOverYearTrends.healthScore.direction
-          } : undefined}
           className="col-span-2"
         />
         
@@ -269,10 +265,6 @@ export default function BudgetMetrics({ data, type, year, monthYear, previousYea
           value={formatCurrency(metrics.totalBudget)}
           subtitle={`Across ${metrics.monthsAnalyzed} months`}
           variant="default"
-          trend={metrics.yearOverYearTrends ? {
-            value: metrics.yearOverYearTrends.avgBudget.display,
-            direction: metrics.yearOverYearTrends.avgBudget.direction
-          } : undefined}
         />
         
         <MetricCard
@@ -280,10 +272,6 @@ export default function BudgetMetrics({ data, type, year, monthYear, previousYea
           value={formatCurrency(metrics.totalSaved || 0)}
           subtitle={(metrics.totalSaved || 0) > 0 ? "Under budget total" : "Over budget total"}
           variant={(metrics.totalSaved || 0) > 0 ? "default" : "warning"}
-          trend={metrics.yearOverYearTrends ? {
-            value: metrics.yearOverYearTrends.totalSaved.display,
-            direction: metrics.yearOverYearTrends.totalSaved.direction
-          } : undefined}
         />
         
         <MetricCard
@@ -291,10 +279,6 @@ export default function BudgetMetrics({ data, type, year, monthYear, previousYea
           value={formatPercentage(metrics.onTrackPercentage || 0)}
           subtitle="Month-to-month stability"
           variant="default"
-          trend={metrics.yearOverYearTrends ? {
-            value: metrics.yearOverYearTrends.consistency.display,
-            direction: metrics.yearOverYearTrends.consistency.direction
-          } : undefined}
         />
       </>
     );

@@ -196,7 +196,7 @@ export default function TransactionFilters({
           </label>
           <div className="space-y-1.5">
             {categories
-              .filter(cat => !cat.is_income && !cat.is_payment && !cat.is_investment)
+              .filter(cat => !cat.is_income && !cat.is_payment)
               .map(category => (
                 <label key={category.name} className="flex items-center text-xs cursor-pointer">
                   <input
@@ -317,7 +317,7 @@ export default function TransactionFilters({
             </div>
             <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
               {categories
-                .filter(cat => !cat.is_income && !cat.is_payment && !cat.is_investment)
+                .filter(cat => !cat.is_income && !cat.is_payment)
                 .map(category => (
                   <label key={category.name} className="flex items-center text-sm cursor-pointer">
                     <input

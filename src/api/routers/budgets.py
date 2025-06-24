@@ -59,8 +59,17 @@ async def get_budget_analysis(
             if budget_amount <= 0:
                 continue
                 
-            # Get actual amount from monthly summary
-            actual_amount = monthly_summary.category_totals.get(category, Decimal('0'))
+            # Special handling for "Investments" budget category
+            if category == "Investments":
+                # Sum all investment transaction categories
+                investment_categories = ['Acorns', 'Wealthfront', 'Robinhood', 'Schwab']
+                actual_amount = sum(
+                    monthly_summary.category_totals.get(cat, Decimal('0')) 
+                    for cat in investment_categories
+                )
+            else:
+                # Get actual amount from monthly summary
+                actual_amount = monthly_summary.category_totals.get(category, Decimal('0'))
             
             # Calculate variance (budget - actual)
             variance = budget_amount - actual_amount
@@ -140,8 +149,17 @@ async def get_yearly_budget_analysis(
                 
                 all_categories.add(category)
                 
-                # Get actual amount from monthly summary
-                actual_amount = summary.category_totals.get(category, Decimal('0'))
+                # Special handling for "Investments" budget category
+                if category == "Investments":
+                    # Sum all investment transaction categories
+                    investment_categories = ['Acorns', 'Wealthfront', 'Robinhood', 'Schwab']
+                    actual_amount = sum(
+                        summary.category_totals.get(cat, Decimal('0')) 
+                        for cat in investment_categories
+                    )
+                else:
+                    # Get actual amount from monthly summary
+                    actual_amount = summary.category_totals.get(category, Decimal('0'))
                 
                 # Calculate variance (budget - actual)
                 variance = budget_amount - actual_amount

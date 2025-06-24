@@ -41,7 +41,7 @@ async def get_comprehensive_financial_overview(
         
         # Investment and expense categories
         investment_categories = ['Acorns', 'Wealthfront', 'Robinhood', 'Schwab']
-        exclude_categories = ['Pay', 'Payment'] + investment_categories
+        exclude_categories = ['Pay', 'Payment']
         
         # Basic data range info
         date_range = {
