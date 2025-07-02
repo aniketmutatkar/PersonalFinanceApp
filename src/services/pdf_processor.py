@@ -98,12 +98,7 @@ class PDFProcessor:
     def extract_with_page_detection(self, pdf_file_path: str) -> Tuple[str, float, int, int]:
         """
         Extract text with page detection to find most relevant financial data
-        
-        Args:
-            pdf_file_path: Path to the PDF file
-            
-        Returns:
-            Tuple of (best_text, confidence_score, relevant_page_number, total_pages)
+        FIXED: Analyze ALL pages + institution-aware scoring
         """
         if not os.path.exists(pdf_file_path):
             raise FileNotFoundError(f"PDF file not found: {pdf_file_path}")
@@ -115,12 +110,11 @@ class PDFProcessor:
             total_pages = self._get_page_count(pdf_file_path)
             logger.info(f"PDF has {total_pages} pages")
             
-            # Analyze first 3 pages maximum (most statements have key data on page 1-2)
-            pages_to_analyze = min(3, total_pages)
+            # FIXED: Analyze ALL pages instead of just first 3
             page_scores = {}
             
             # Score each page for financial content
-            for page_num in range(pages_to_analyze):
+            for page_num in range(total_pages):
                 try:
                     page_text, page_confidence = self._extract_page_text(pdf_file_path, page_num)
                     if page_text:
@@ -160,7 +154,7 @@ class PDFProcessor:
         except Exception as e:
             logger.error(f"Error in page detection: {str(e)}")
             return "", 0.0, 1, 1
-    
+
     def extract_single_page_pdf(self, source_pdf_path: str, page_number: int, output_path: str) -> bool:
         """
         Extract a single page from PDF and save as new PDF file
@@ -271,59 +265,119 @@ class PDFProcessor:
     
     def _score_page_for_financial_content(self, text: str) -> float:
         """
-        Enhanced scoring prioritizing summary pages over transaction pages
+        FIXED: Institution-aware scoring based on your screenshots
         """
         if not text:
             return 0.0
         
         text_lower = text.lower()
-        score_factors = []
+        score = 0.0
         
-        # 1. Wells Fargo summary page indicators (HIGHEST PRIORITY)
-        wells_fargo_summary_keywords = [
-            'statement period activity summary',
-            'beginning balance on',
-            'ending balance on', 
-            'deposits/additions',
-            'withdrawals/subtractions'
-        ]
-        summary_count = sum(1 for keyword in wells_fargo_summary_keywords if keyword in text_lower)
-        summary_score = min(summary_count / len(wells_fargo_summary_keywords), 1.0) * 2.0  # Double weight
-        score_factors.append(summary_score)
+        # 1. HIGH-VALUE SUMMARY PAGE INDICATORS (what we want)
+        summary_indicators = {
+            'account summary': 2.0,              # Robinhood, Schwab
+            'valuation at a glance': 2.0,        # Acorns
+            'ending balance': 1.5,               # Multiple institutions
+            'ending account value': 1.5,         # Schwab
+            'portfolio value': 1.5,              # Robinhood
+            'grand total': 1.5,                  # Acorns  
+            'beginning balance': 1.0,            # Multiple
+            'starting balance': 1.0,             # Wealthfront
+            'beginning account value': 1.0,      # Schwab
+            'activity by transaction type': 1.5, # ADP 401k (POSITIVE!)
+            'total account value': 1.0
+        }
         
-        # 2. PENALTY for transaction page indicators
-        transaction_penalty_keywords = [
-            'transaction history',
-            'check deposits',
-            'check number',
-            'description withdrawals',
-            'transaction history (continued)'
-        ]
-        transaction_count = sum(1 for keyword in transaction_penalty_keywords if keyword in text_lower)
-        transaction_penalty = min(transaction_count / 3, 0.5)  # Max 50% penalty
+        for keyword, points in summary_indicators.items():
+            if keyword in text_lower:
+                score += points
+                logger.info(f"Found summary indicator '{keyword}': +{points}")
         
-        # 3. General financial keywords (medium weight)
-        general_keywords = ['balance', 'account', 'total', 'value', 'statement']
-        keyword_count = sum(1 for keyword in general_keywords if keyword in text_lower)
-        keyword_score = min(keyword_count / len(general_keywords), 1.0)
-        score_factors.append(keyword_score)
+        # 2. INSTITUTION-SPECIFIC BONUSES
+        # Acorns bonus
+        if ("valuation at a glance" in text_lower and "ending balance" in text_lower and 
+            "acorns securities" in text_lower):
+            score += 1.0
+            logger.info("Acorns summary page bonus: +1.0")
         
-        # 4. Currency amounts
+        # Robinhood bonus  
+        if ("account summary" in text_lower and "portfolio value" in text_lower and
+            "robinhood" in text_lower):
+            score += 1.0
+            logger.info("Robinhood summary page bonus: +1.0")
+        
+        # Schwab bonus
+        if ("account summary" in text_lower and "ending account value" in text_lower and
+            "schwab" in text_lower):
+            score += 1.0  
+            logger.info("Schwab summary page bonus: +1.0")
+        
+        # Wealthfront bonus
+        if (("individual investment account" in text_lower or "individual cash account" in text_lower) and
+            ("ending balance" in text_lower or "starting balance" in text_lower) and
+            "wealthfront" in text_lower):
+            score += 1.0
+            logger.info("Wealthfront summary page bonus: +1.0")
+        
+        # ADP 401k bonus  
+        if ("activity by transaction type" in text_lower and "ending balance" in text_lower):
+            score += 1.0
+            logger.info("ADP 401k summary page bonus: +1.0")
+        
+        # 3. TRANSACTION PAGE PENALTIES (but NOT for ADP!)
+        transaction_penalties = {
+            'transaction history': -1.0,
+            'check deposits': -0.5,
+            'check number': -0.5, 
+            'description withdrawals': -0.5,
+            'transaction history (continued)': -1.0
+        }
+        
+        # EXCEPTION: Don't penalize ADP 401k pages that have the summary section
+        is_adp_summary = "activity by transaction type" in text_lower and "ending balance" in text_lower
+        
+        if not is_adp_summary:  # Only apply penalties if NOT an ADP summary page
+            for penalty_keyword, penalty_points in transaction_penalties.items():
+                if penalty_keyword in text_lower:
+                    score += penalty_points  # Adding negative points
+                    logger.info(f"Found transaction indicator '{penalty_keyword}': {penalty_points}")
+        
+        # 4. CURRENCY AMOUNT VALIDATION (must have real dollar amounts)
         import re
         currency_patterns = re.findall(r'\$[\d,]+\.?\d{0,2}', text)
-        large_amounts = [amt for amt in currency_patterns if self._parse_currency_amount(amt) > 1000]
-        currency_score = min(len(large_amounts) / 5, 1.0)
-        score_factors.append(currency_score)
         
-        # 5. Calculate base score
-        base_score = sum(score_factors) / len(score_factors)
+        # Filter for reasonable amounts (not $0.00, not single digits) 
+        significant_amounts = []
+        for amount_str in currency_patterns:
+            try:
+                # Remove $ and commas, convert to float
+                amount_val = float(amount_str.replace('$', '').replace(',', ''))
+                if amount_val > 10.0:  # Must be more than $10
+                    significant_amounts.append(amount_val)
+            except:
+                continue
         
-        # 6. Apply transaction penalty
-        final_score = max(0.0, base_score - transaction_penalty)
+        # Bonus for having multiple significant dollar amounts
+        if len(significant_amounts) >= 2:
+            score += 0.5
+            logger.info(f"Found {len(significant_amounts)} significant amounts: +0.5")
+        elif len(significant_amounts) == 1:
+            score += 0.2
         
-        logger.debug(f"Page scoring: base={base_score:.2f}, summary_boost={summary_score:.2f}, transaction_penalty={transaction_penalty:.2f}, final={final_score:.2f}")
+        # 5. DATE PATTERN VALIDATION (should have proper dates)
+        date_patterns = re.findall(r'\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}', text)
+        if len(date_patterns) >= 1:
+            score += 0.3
         
-        return min(final_score, 1.0)
+        # 6. ENSURE MINIMUM CONTENT DENSITY
+        if len(text.strip()) < 100:
+            score *= 0.5  # Penalize very short pages
+        
+        # 7. PREVENT NEGATIVE SCORES 
+        final_score = max(score, 0.0)
+        
+        logger.info(f"Final page score: {final_score:.2f}")
+        return final_score
 
     def _parse_currency_amount(self, currency_str: str) -> float:
         """Parse currency string to float for scoring"""

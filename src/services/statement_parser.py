@@ -99,10 +99,10 @@ class StatementParser:
         return cleaned.strip()
     
     def _detect_institution(self, text: str) -> str:
-        """Enhanced institution detection - REMOVED specific addresses for security"""
+        """FIXED: More specific institution detection to avoid crossover"""
         text_lower = text.lower()
         
-        # Institution detection with general keywords (removed specific addresses)
+        # Institution detection with specific patterns (ordered by specificity)
         institution_checks = [
             ('wells_fargo', [
                 'wells fargo combined statement of accounts',
@@ -112,32 +112,30 @@ class StatementParser:
                 'wellsfargo.com',
                 'statement period activity summary'
             ]),
-            ('wealthfront', [
-                'wealthfront brokerage llc', 'wealthfront advisers', 
-                'monthly statement for march', 'individual investment account',
-                'wealthfront.com', 'support@wealthfront.com',
-                'wealthfront cash account',
-                'investment account',
-                'wealthfront savings',
-                'cash account'
-            ]),
             ('acorns', [
                 'acorns securities llc', 'acorns advisers llc',
-                'base investment account', 'acorns.com'
-                ]),
+                'base investment account', 'acorns.com',
+                'valuation at a glance'  # Acorns-specific
+            ]),
             ('robinhood', [
                 'robinhood securities llc', 'robinhood financial llc',
-                'help@robinhood.com', 'robinhood gold'
+                'help@robinhood.com', 'robinhood gold',
+                'robinhood.com'
             ]),
             ('schwab', [
                 'charles schwab co inc', 'schwab one account',
                 'schwab.com/login', 'member sipc schwab',
-                'schwab representative'
+                'schwab representative', 'roth contributory ira'
+            ]),
+            ('wealthfront', [
+                'wealthfront brokerage llc', 'wealthfront advisers', 
+                'wealthfront.com', 'support@wealthfront.com',
+                'wealthfront cash account', 'wealthfront savings'
             ]),
             ('adp', [
                 'transaction and balance history', 'transaction history by fund',
                 'personal rate of return', 'mykplan.adp.com',
-                'modified dietz method'  # ADP specific methodology
+                'modified dietz method'
             ])
         ]
         
@@ -223,16 +221,16 @@ class StatementParser:
         return statement_data
 
     def _extract_adp_401k(self, text: str) -> StatementData:
-        """Extract data from ADP 401k statements - REMOVED account number extraction"""
+        """FIXED: ADP 401k extraction - look for Activity by Transaction Type section"""
         data = StatementData()
         data.extraction_notes = []
         
         # Account type
         data.account_type = "401(k) Plan"
         
-        # Extract statement period from various patterns
+        # Extract statement period
         period_patterns = [
-            r'statement period\s*(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{1,2}/\d{4})',
+            r'transaction history by fund for the period:\s*(\d{1,2}/\d{1,2}/\d{4})\s*to\s*(\d{1,2}/\d{1,2}/\d{4})',
             r'for the period\s*(\w+\s+\d{1,2},\s+\d{4})\s*through\s*(\w+\s+\d{1,2},\s+\d{4})'
         ]
         
@@ -245,20 +243,20 @@ class StatementParser:
                     if start_date and end_date:
                         data.statement_period_start = start_date
                         data.statement_period_end = end_date
-                        data.extraction_notes.append(f"Found statement period: {start_date} to {end_date}")
+                        data.extraction_notes.append(f"Found ADP statement period: {start_date} to {end_date}")
                         break
                 except Exception as e:
                     logger.warning(f"Failed to parse ADP statement period: {e}")
         
-        # Extract balance patterns
+        # FIXED: Extract balances - From screenshot: "Beginning Balance    $28,763.24"
         beginning_patterns = [
-            r'beginning account value\s*\$?([\d,]+\.?\d*)',
-            r'beginning balance\s*\$?([\d,]+\.?\d*)',
+            r'beginning balance\s*\$?([\d,]+\.\d{2})',
+            r'beginning account value\s*\$?([\d,]+\.\d{2})'
         ]
         
         ending_patterns = [
-            r'ending balance\s*\$?([\d,]+\.?\d*)',
-            r'ending account value\s*\$?([\d,]+\.?\d*)',
+            r'ending balance\s*\$?([\d,]+\.\d{2})',
+            r'ending account value\s*\$?([\d,]+\.\d{2})'
         ]
         
         # Extract beginning balance
@@ -269,7 +267,7 @@ class StatementParser:
                     amount_str = self._clean_amount_string(match.group(1))
                     if amount_str:
                         data.beginning_balance = Decimal(amount_str)
-                        data.extraction_notes.append(f"Found beginning balance: ${amount_str}")
+                        data.extraction_notes.append(f"Found ADP beginning balance: ${amount_str}")
                         break
                 except Exception as e:
                     logger.warning(f"Failed to parse ADP beginning balance: {e}")
@@ -282,7 +280,7 @@ class StatementParser:
                     amount_str = self._clean_amount_string(match.group(1))
                     if amount_str:
                         data.ending_balance = Decimal(amount_str)
-                        data.extraction_notes.append(f"Found ending balance: ${amount_str}")
+                        data.extraction_notes.append(f"Found ADP ending balance: ${amount_str}")
                         break
                 except Exception as e:
                     logger.warning(f"Failed to parse ADP ending balance: {e}")
@@ -290,47 +288,44 @@ class StatementParser:
         return data
 
     def _extract_acorns(self, text: str) -> StatementData:
-        """Extract data from Acorns statements - REMOVED account number extraction"""
+        """FIXED: Acorns extraction with exact patterns from screenshots"""
         data = StatementData()
         data.extraction_notes = []
         
         # Account type
         data.account_type = "Base Investment Account"
         
-        # Extract statement period
+        # Extract statement period - "Monthly Statement for May 1 - 31, 2025"
         period_patterns = [
-            r'statement for\s*(\w+\s+\d{4})',
-            r'monthly statement\s*(\w+\s+\d{1,2},\s+\d{4})\s*through\s*(\w+\s+\d{1,2},\s+\d{4})'
+            r'monthly statement for (\w+) (\d{1,2}) - (\d{1,2}), (\d{4})',
+            r'statement for\s*(\w+\s+\d{4})'
         ]
         
         for pattern in period_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 try:
-                    if len(match.groups()) == 1:
-                        # Month and year only
-                        date_str = match.group(1)
-                        parsed_date = self._parse_month_year(date_str)
-                        if parsed_date:
-                            data.statement_period_end = parsed_date
-                            data.extraction_notes.append(f"Found statement month: {date_str}")
-                    else:
-                        # Start and end dates
-                        start_date = self._parse_date(match.group(1))
-                        end_date = self._parse_date(match.group(2))
-                        if start_date and end_date:
-                            data.statement_period_start = start_date
+                    if len(match.groups()) == 4:  # "May 1 - 31, 2025" format
+                        month_name = match.group(1)
+                        end_day = match.group(3)
+                        year = match.group(4)
+                        date_str = f"{month_name} {end_day}, {year}"
+                        end_date = self._parse_date(date_str)
+                        if end_date:
                             data.statement_period_end = end_date
-                            data.extraction_notes.append(f"Found statement period: {start_date} to {end_date}")
-                    break
+                            data.extraction_notes.append(f"Found Acorns statement end date: {date_str}")
+                            break
                 except Exception as e:
                     logger.warning(f"Failed to parse Acorns statement period: {e}")
         
-        # Extract balances
+        # FIXED: Extract balances with exact patterns from Acorns screenshot
+        # "Ending Balance (5/31/2025)" followed by "$8,497.93"
+        # "Grand Total (5/31/2025)" followed by "$8,497.93"
         balance_patterns = [
-            r'account value\s*\$?([\d,]+\.?\d*)',
-            r'total invested\s*\$?([\d,]+\.?\d*)',
-            r'portfolio value\s*\$?([\d,]+\.?\d*)'
+            r'ending balance \([^)]+\)\s*\$?([\d,]+\.\d{2})',
+            r'grand total \([^)]+\)\s*\$?([\d,]+\.\d{2})',
+            r'ending balance\s*\$?([\d,]+\.\d{2})',
+            r'grand total\s*\$?([\d,]+\.\d{2})'
         ]
         
         for pattern in balance_patterns:
@@ -340,7 +335,7 @@ class StatementParser:
                     amount_str = self._clean_amount_string(match.group(1))
                     if amount_str:
                         data.ending_balance = Decimal(amount_str)
-                        data.extraction_notes.append(f"Found account value: ${amount_str}")
+                        data.extraction_notes.append(f"Found Acorns balance: ${amount_str}")
                         break
                 except Exception as e:
                     logger.warning(f"Failed to parse Acorns balance: {e}")
@@ -348,7 +343,7 @@ class StatementParser:
         return data
 
     def _extract_robinhood(self, text: str) -> StatementData:
-        """Extract data from Robinhood statements - REMOVED account number extraction"""
+        """FIXED: Robinhood extraction with exact patterns from screenshots"""
         data = StatementData()
         data.extraction_notes = []
         
@@ -370,26 +365,27 @@ class StatementParser:
                     if start_date and end_date:
                         data.statement_period_start = start_date
                         data.statement_period_end = end_date
-                        data.extraction_notes.append(f"Found statement period: {start_date} to {end_date}")
+                        data.extraction_notes.append(f"Found Robinhood statement period: {start_date} to {end_date}")
                         break
                 except Exception as e:
                     logger.warning(f"Failed to parse Robinhood statement period: {e}")
         
-        # Extract balances
+        # FIXED: Extract balances - From screenshot: "Portfolio Value" with "Closing Balance" of "$39,768.93"
         balance_patterns = [
-            r'total account value\s*\$?([\d,]+\.?\d*)',
-            r'net account value\s*\$?([\d,]+\.?\d*)',
-            r'portfolio value\s*\$?([\d,]+\.?\d*)'
+            r'portfolio value.*?closing balance.*?\$?([\d,]+\.\d{2})',
+            r'portfolio value.*?\$?([\d,]+\.\d{2})',
+            r'total securities.*?\$?([\d,]+\.\d{2})',
+            r'closing balance.*?\$?([\d,]+\.\d{2})'
         ]
         
         for pattern in balance_patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
             if match:
                 try:
                     amount_str = self._clean_amount_string(match.group(1))
                     if amount_str:
                         data.ending_balance = Decimal(amount_str)
-                        data.extraction_notes.append(f"Found account value: ${amount_str}")
+                        data.extraction_notes.append(f"Found Robinhood portfolio value: ${amount_str}")
                         break
                 except Exception as e:
                     logger.warning(f"Failed to parse Robinhood balance: {e}")
@@ -397,44 +393,53 @@ class StatementParser:
         return data
 
     def _extract_schwab(self, text: str) -> StatementData:
-        """Extract data from Schwab statements - REMOVED account number extraction"""
+        """FIXED: Schwab extraction for BOTH Roth IRA and Brokerage account types"""
         data = StatementData()
         data.extraction_notes = []
         
-        # Account type
-        if 'roth ira' in text.lower():
+        # FIXED: Account type detection for both Schwab types
+        if 'roth contributory ira' in text.lower():
             data.account_type = "Roth IRA"
-        else:
+        elif 'schwab one' in text.lower():
             data.account_type = "Brokerage Account"
+        else:
+            data.account_type = "Investment Account"
         
-        
-        # Extract statement period
+        # Extract statement period - "Statement Period May 1-31, 2025"
         period_patterns = [
-            r'statement period\s*(\w+\s+\d{1,2},\s+\d{4})\s*through\s*(\w+\s+\d{1,2},\s+\d{4})',
-            r'for the period\s*(\d{1,2}/\d{1,2}/\d{4})\s*-\s*(\d{1,2}/\d{1,2}/\d{4})'
+            r'statement period\s*(\w+\s+\d{1,2})-(\d{1,2}),\s*(\d{4})',
+            r'statement period\s*(\w+\s+\d{1,2},\s+\d{4})\s*-\s*(\w+\s+\d{1,2},\s+\d{4})'
         ]
         
         for pattern in period_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 try:
-                    start_date = self._parse_date(match.group(1))
-                    end_date = self._parse_date(match.group(2))
-                    if start_date and end_date:
-                        data.statement_period_start = start_date
-                        data.statement_period_end = end_date
-                        data.extraction_notes.append(f"Found statement period: {start_date} to {end_date}")
-                        break
+                    if len(match.groups()) == 3:  # "May 1-31, 2025" format
+                        month_name = match.group(1).split()[0]
+                        end_day = match.group(2)
+                        year = match.group(3)
+                        date_str = f"{month_name} {end_day}, {year}"
+                        end_date = self._parse_date(date_str)
+                        if end_date:
+                            data.statement_period_end = end_date
+                            data.extraction_notes.append(f"Found Schwab statement end date: {date_str}")
+                            break
                 except Exception as e:
                     logger.warning(f"Failed to parse Schwab statement period: {e}")
         
-        # Extract balances
+        # FIXED: Extract balances - From screenshots: "Ending Account Value as of 05/31" = "$32,071.82"
         balance_patterns = [
-            r'total account value\s*\$?([\d,]+\.?\d*)',
-            r'ending account value\s*\$?([\d,]+\.?\d*)',
-            r'account total\s*\$?([\d,]+\.?\d*)'
+            r'endingaccountvalueasof\d{2}/\d{2}.*?\$?([\d,]+\.\d{2})',  # EndingAccountValueasof05/31 $32,071.82
+            r'endingaccountvalue.*?\$?([\d,]+\.\d{2})',                  # Fallback
+        ]
+
+        beginning_patterns = [
+            r'beginningaccountvalueasof\d{2}/\d{2}.*?\$?([\d,]+\.\d{2})',  # BeginningAccountValueasof05/01 $30,193.03
+            r'beginningaccountvalue.*?\$?([\d,]+\.\d{2})',                  # Fallback
         ]
         
+        # Extract ending balance
         for pattern in balance_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
@@ -442,30 +447,43 @@ class StatementParser:
                     amount_str = self._clean_amount_string(match.group(1))
                     if amount_str:
                         data.ending_balance = Decimal(amount_str)
-                        data.extraction_notes.append(f"Found account value: ${amount_str}")
+                        data.extraction_notes.append(f"Found Schwab ending balance: ${amount_str}")
                         break
                 except Exception as e:
-                    logger.warning(f"Failed to parse Schwab balance: {e}")
+                    logger.warning(f"Failed to parse Schwab ending balance: {e}")
+        
+        # Extract beginning balance
+        for pattern in beginning_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                try:
+                    amount_str = self._clean_amount_string(match.group(1))
+                    if amount_str:
+                        data.beginning_balance = Decimal(amount_str)
+                        data.extraction_notes.append(f"Found Schwab beginning balance: ${amount_str}")
+                        break
+                except Exception as e:
+                    logger.warning(f"Failed to parse Schwab beginning balance: {e}")
         
         return data
 
     def _extract_wealthfront(self, text: str) -> StatementData:
-        """Extract data from Wealthfront statements - REMOVED account number extraction"""
+        """FIXED: Wealthfront extraction for BOTH Investment and Cash account types"""
         data = StatementData()
         data.extraction_notes = []
+        logger.info(f"DEBUG: Wealthfront raw text: {text[:500]}")
         
-        # Account type - distinguish between Investment and Cash accounts
+        # FIXED: Account type detection for both Wealthfront types
         if 'individual investment account' in text.lower():
             data.account_type = "Individual Investment Account"
-        elif any(x in text.lower() for x in ['cash account', 'savings', 'high yield']):
-            data.account_type = "Cash Account"
+        elif 'individual cash account' in text.lower():
+            data.account_type = "Individual Cash Account"
         else:
             data.account_type = "Investment Account"
         
-        
-        # Extract statement period
+        # Extract statement period - "Monthly Statement for May 1 - 31, 2025"
         period_patterns = [
-            r'monthly statement for\s*(\w+\s+\d{4})',
+            r'monthly statement for (\w+) (\d{1,2}) - (\d{1,2}), (\d{4})',
             r'statement period\s*(\w+\s+\d{1,2},\s+\d{4})\s*through\s*(\w+\s+\d{1,2},\s+\d{4})'
         ]
         
@@ -473,32 +491,31 @@ class StatementParser:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 try:
-                    if len(match.groups()) == 1:
-                        # Month and year only
-                        date_str = match.group(1)
-                        parsed_date = self._parse_month_year(date_str)
-                        if parsed_date:
-                            data.statement_period_end = parsed_date
-                            data.extraction_notes.append(f"Found statement month: {date_str}")
-                    else:
-                        # Start and end dates
-                        start_date = self._parse_date(match.group(1))
-                        end_date = self._parse_date(match.group(2))
-                        if start_date and end_date:
-                            data.statement_period_start = start_date
+                    if len(match.groups()) == 4:  # "May 1 - 31, 2025" format
+                        month_name = match.group(1)
+                        end_day = match.group(3)
+                        year = match.group(4)
+                        date_str = f"{month_name} {end_day}, {year}"
+                        end_date = self._parse_date(date_str)
+                        if end_date:
                             data.statement_period_end = end_date
-                            data.extraction_notes.append(f"Found statement period: {start_date} to {end_date}")
-                    break
+                            data.extraction_notes.append(f"Found Wealthfront statement end date: {date_str}")
+                            break
                 except Exception as e:
                     logger.warning(f"Failed to parse Wealthfront statement period: {e}")
         
-        # Extract balances
+        # FIXED: Extract balances - From screenshots: "Starting Balance" and "Ending Balance"
         balance_patterns = [
-            r'account value\s*\$?([\d,]+\.?\d*)',
-            r'total balance\s*\$?([\d,]+\.?\d*)',
-            r'portfolio value\s*\$?([\d,]+\.?\d*)'
+            r'ending balance\s*\$?([\d,]+\.\d{2})',    # "Ending Balance $10,262.27"
+            r'endingbalance\s*\$?([\d,]+\.\d{2})',     # No space fallback
+        ]
+
+        beginning_patterns = [
+            r'starting balance\s*\$?([\d,]+\.\d{2})',   # "Starting Balance $10,226.02"  
+            r'startingbalance\s*\$?([\d,]+\.\d{2})',    # No space fallback
         ]
         
+        # Extract ending balance
         for pattern in balance_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
@@ -506,20 +523,36 @@ class StatementParser:
                     amount_str = self._clean_amount_string(match.group(1))
                     if amount_str:
                         data.ending_balance = Decimal(amount_str)
-                        data.extraction_notes.append(f"Found account value: ${amount_str}")
+                        data.extraction_notes.append(f"Found Wealthfront ending balance: ${amount_str}")
                         break
                 except Exception as e:
-                    logger.warning(f"Failed to parse Wealthfront balance: {e}")
+                    logger.warning(f"Failed to parse Wealthfront ending balance: {e}")
+        
+        # Extract beginning balance
+        for pattern in beginning_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                try:
+                    amount_str = self._clean_amount_string(match.group(1))
+                    if amount_str:
+                        data.beginning_balance = Decimal(amount_str)
+                        data.extraction_notes.append(f"Found Wealthfront beginning balance: ${amount_str}")
+                        break
+                except Exception as e:
+                    logger.warning(f"Failed to parse Wealthfront beginning balance: {e}")
         
         return data
 
     def _clean_amount_string(self, amount_str: str) -> str:
-        """Clean and standardize amount strings"""
+        """FIXED: Better amount cleaning to handle commas properly"""
         if not amount_str:
             return ""
         
-        # Remove all non-digit, non-decimal characters
-        cleaned = re.sub(r'[^\d\.]', '', amount_str)
+        # Remove all non-digit, non-decimal, non-comma characters
+        cleaned = re.sub(r'[^\d\.,]', '', amount_str)
+        
+        # Remove commas (they're thousands separators)
+        cleaned = cleaned.replace(',', '')
         
         # Ensure we have a valid number
         try:
