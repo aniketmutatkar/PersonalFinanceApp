@@ -78,19 +78,9 @@ class StatementParser:
         # Use institution-specific extractor
         statement_data = self.institution_extractors[institution](cleaned_text)
         statement_data.institution = institution
-        
-        print(f"🔍 EXTRACTION DEBUG for {institution}:")
-        print(f"🔍   Beginning Balance: {statement_data.beginning_balance}")
-        print(f"🔍   Ending Balance: {statement_data.ending_balance}")
-        print(f"🔍   Period Start: {statement_data.statement_period_start}")
-        print(f"🔍   Period End: {statement_data.statement_period_end}")
-        print(f"🔍   Account Type: {statement_data.account_type}")
-        print(f"🔍   Extraction Notes: {statement_data.extraction_notes}")
 
         # Calculate confidence based on successful extractions
         statement_data.confidence_score = self._calculate_confidence(statement_data, cleaned_text)
-        
-        print(f"🔍   Final Confidence: {statement_data.confidence_score:.2f}")
         return statement_data
     
     def _clean_text(self, text: str) -> str:
@@ -388,8 +378,16 @@ class StatementParser:
         
         # Extract balances (unchanged)
         balance_patterns = [
+            # Pattern 1: Portfolio Value with two amounts - capture the second (closing balance)
+            r'portfolio value\s+\$[\d,]+\.\d{2}\s+\$?([\d,]+\.\d{2})',
+            
+            # Pattern 2: Account Summary table format - look for Portfolio Value closing balance
             r'portfolio value.*?closing balance.*?\$?([\d,]+\.\d{2})',
-            r'portfolio value.*?\$?([\d,]+\.\d{2})',
+            
+            # Pattern 3: Table format where Portfolio Value is followed by opening then closing
+            r'portfolio value\s*\$?[\d,]+\.\d{2}\s*\$?([\d,]+\.\d{2})',
+            
+            # Fallback patterns (keep existing ones as backup)
             r'total securities.*?\$?([\d,]+\.\d{2})',
             r'closing balance.*?\$?([\d,]+\.\d{2})'
         ]
@@ -518,10 +516,6 @@ class StatementParser:
         else:
             data.account_type = "Investment Account"
         
-        # DEBUG: Show first 300 chars
-        print(f"🔍 WEALTHFRONT DATE DEBUG - First 300 chars:")
-        print(f"🔍 {text[:300]}")
-        
         # Extract statement period - "Monthly Statement for May 1 - 31, 2025"
         period_patterns = [
             r'monthly statement for (\w+) (\d{1,2}) - (\d{1,2}), (\d{4})',
@@ -530,10 +524,8 @@ class StatementParser:
         ]
         
         for i, pattern in enumerate(period_patterns):
-            print(f"🔍 Trying Wealthfront pattern {i+1}: {pattern}")
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                print(f"🔍 WEALTHFRONT PATTERN {i+1} MATCHED: {match.groups()}")
                 try:
                     if len(match.groups()) == 4:  # "May 1 - 31, 2025" format
                         month_name = match.group(1)
@@ -559,8 +551,6 @@ class StatementParser:
                             break
                 except Exception as e:
                     logger.warning(f"Failed to parse Wealthfront statement period: {e}")
-            else:
-                print(f"🔍 Wealthfront pattern {i+1} - NO MATCH")
         
         # FIXED: Extract balances - From screenshots: "Starting Balance" and "Ending Balance"
         balance_patterns = [
