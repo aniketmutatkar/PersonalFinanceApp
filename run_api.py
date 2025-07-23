@@ -16,6 +16,8 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 
+logging.getLogger("pdfminer.pdfpage").setLevel(logging.ERROR)
+
 logger = logging.getLogger("finance-tracker-api")
 
 def run_api(host: str, port: int, reload: bool, env: str):

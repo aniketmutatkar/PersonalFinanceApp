@@ -928,7 +928,7 @@ async def upload_statement_with_page_detection(
         statement_parser = StatementParser()
         statement_data = statement_parser.parse_statement(extracted_text)
         
-        overall_confidence = (extraction_confidence + statement_data.confidence_score) / 2
+        overall_confidence = (extraction_confidence * 0.3) + (statement_data.confidence_score * 0.7)
         
         account = None
         account_suggestions = []
@@ -1018,6 +1018,7 @@ async def upload_statement_with_page_detection(
             "account_type": statement_data.account_type,
             "statement_period_start": statement_data.statement_period_start.isoformat() if statement_data.statement_period_start else None,
             "statement_period_end": statement_data.statement_period_end.isoformat() if statement_data.statement_period_end else None,
+            "confidence_score": overall_confidence,
             "duplicate_checks": {
                 "filename_duplicate": {
                     "is_duplicate": filename_check.is_duplicate,

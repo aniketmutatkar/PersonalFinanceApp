@@ -103,12 +103,12 @@ class PDFProcessor:
         if not os.path.exists(pdf_file_path):
             raise FileNotFoundError(f"PDF file not found: {pdf_file_path}")
         
-        logger.info(f"Processing PDF with page detection: {pdf_file_path}")
+        logger.debug(f"Processing PDF with page detection: {pdf_file_path}")
         
         try:
             # Get total page count first
             total_pages = self._get_page_count(pdf_file_path)
-            logger.info(f"PDF has {total_pages} pages")
+            logger.debug(f"PDF has {total_pages} pages")
             
             # FIXED: Analyze ALL pages instead of just first 3
             page_scores = {}
@@ -128,7 +128,7 @@ class PDFProcessor:
                             'total_score': total_score
                         }
                         
-                        logger.info(f"Page {page_num + 1}: confidence={page_confidence:.2f}, financial_score={financial_score:.2f}, total={total_score:.2f}")
+                        logger.debug(f"Page {page_num + 1}: confidence={page_confidence:.2f}, financial_score={financial_score:.2f}, total={total_score:.2f}")
                     
                 except Exception as e:
                     logger.warning(f"Error processing page {page_num + 1}: {str(e)}")
@@ -142,7 +142,7 @@ class PDFProcessor:
             best_page = max(page_scores.keys(), key=lambda k: page_scores[k]['total_score'])
             best_data = page_scores[best_page]
             
-            logger.info(f"Best page: {best_page} with score {best_data['total_score']:.2f}")
+            logger.debug(f"Best page: {best_page} with score {best_data['total_score']:.2f}")
             
             return (
                 best_data['text'],
@@ -168,7 +168,7 @@ class PDFProcessor:
             True if successful, False otherwise
         """
         try:
-            logger.info(f"Extracting page {page_number} from {source_pdf_path}")
+            logger.debug(f"Extracting page {page_number} from {source_pdf_path}")
             
             if HAS_PYMUPDF:
                 # Use PyMuPDF for better quality
@@ -190,7 +190,7 @@ class PDFProcessor:
                 new_doc.close()
                 doc.close()
                 
-                logger.info(f"Successfully extracted page {page_number} to {output_path}")
+                logger.debug(f"Successfully extracted page {page_number} to {output_path}")
                 return True
                 
             else:
@@ -211,7 +211,7 @@ class PDFProcessor:
                     with open(output_path, 'wb') as output_file:
                         pdf_writer.write(output_file)
                 
-                logger.info(f"Successfully extracted page {page_number} to {output_path}")
+                logger.debug(f"Successfully extracted page {page_number} to {output_path}")
                 return True
                 
         except Exception as e:
@@ -291,38 +291,38 @@ class PDFProcessor:
         for keyword, points in summary_indicators.items():
             if keyword in text_lower:
                 score += points
-                logger.info(f"Found summary indicator '{keyword}': +{points}")
+                logger.debug(f"Found summary indicator '{keyword}': +{points}")
         
         # 2. INSTITUTION-SPECIFIC BONUSES
         # Acorns bonus
         if ("valuation at a glance" in text_lower and "ending balance" in text_lower and 
             "acorns securities" in text_lower):
             score += 1.0
-            logger.info("Acorns summary page bonus: +1.0")
+            logger.debug("Acorns summary page bonus: +1.0")
         
         # Robinhood bonus  
         if ("account summary" in text_lower and "portfolio value" in text_lower and
             "robinhood" in text_lower):
             score += 1.0
-            logger.info("Robinhood summary page bonus: +1.0")
+            logger.debug("Robinhood summary page bonus: +1.0")
         
         # Schwab bonus
         if ("account summary" in text_lower and "ending account value" in text_lower and
             "schwab" in text_lower):
             score += 1.0  
-            logger.info("Schwab summary page bonus: +1.0")
+            logger.debug("Schwab summary page bonus: +1.0")
         
         # Wealthfront bonus
         if (("individual investment account" in text_lower or "individual cash account" in text_lower) and
             ("ending balance" in text_lower or "starting balance" in text_lower) and
             "wealthfront" in text_lower):
             score += 1.0
-            logger.info("Wealthfront summary page bonus: +1.0")
+            logger.debug("Wealthfront summary page bonus: +1.0")
         
         # ADP 401k bonus  
         if ("activity by transaction type" in text_lower and "ending balance" in text_lower):
             score += 1.0
-            logger.info("ADP 401k summary page bonus: +1.0")
+            logger.debug("ADP 401k summary page bonus: +1.0")
         
         # 3. TRANSACTION PAGE PENALTIES (but NOT for ADP!)
         transaction_penalties = {
@@ -340,7 +340,7 @@ class PDFProcessor:
             for penalty_keyword, penalty_points in transaction_penalties.items():
                 if penalty_keyword in text_lower:
                     score += penalty_points  # Adding negative points
-                    logger.info(f"Found transaction indicator '{penalty_keyword}': {penalty_points}")
+                    logger.debug(f"Found transaction indicator '{penalty_keyword}': {penalty_points}")
         
         # 4. CURRENCY AMOUNT VALIDATION (must have real dollar amounts)
         import re
@@ -360,7 +360,7 @@ class PDFProcessor:
         # Bonus for having multiple significant dollar amounts
         if len(significant_amounts) >= 2:
             score += 0.5
-            logger.info(f"Found {len(significant_amounts)} significant amounts: +0.5")
+            logger.debug(f"Found {len(significant_amounts)} significant amounts: +0.5")
         elif len(significant_amounts) == 1:
             score += 0.2
         
@@ -376,7 +376,7 @@ class PDFProcessor:
         # 7. PREVENT NEGATIVE SCORES 
         final_score = max(score, 0.0)
         
-        logger.info(f"Final page score: {final_score:.2f}")
+        logger.debug(f"Final page score: {final_score:.2f}")
         return final_score
 
     def _parse_currency_amount(self, currency_str: str) -> float:
@@ -401,7 +401,7 @@ class PDFProcessor:
         if not os.path.exists(pdf_file_path):
             raise FileNotFoundError(f"PDF file not found: {pdf_file_path}")
         
-        logger.info(f"Processing PDF: {pdf_file_path}")
+        logger.debug(f"Processing PDF: {pdf_file_path}")
         
         # Try each extraction method in order of reliability
         for method_name, method in zip(
@@ -409,11 +409,11 @@ class PDFProcessor:
             self.extraction_methods
         ):
             try:
-                logger.info(f"Attempting extraction with {method_name}")
+                logger.debug(f"Attempting extraction with {method_name}")
                 text, confidence = method(pdf_file_path)
                 
                 if text and len(text.strip()) > 50:  # Minimum viable text length
-                    logger.info(f"Successfully extracted {len(text)} characters using {method_name}")
+                    logger.debug(f"Successfully extracted {len(text)} characters using {method_name}")
                     return text, confidence
                 else:
                     logger.warning(f"{method_name} returned insufficient text ({len(text)} chars)")

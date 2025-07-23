@@ -83,15 +83,6 @@ async def get_transactions(
        
        # Calculate pagination offset
        offset = (page - 1) * page_size
-       
-       print(f"Transaction API called with:")
-       print(f"  categories={filter_categories}")
-       print(f"  description={description}")
-       print(f"  start_date={start_date}")
-       print(f"  end_date={end_date}")
-       print(f"  month={month}")
-       print(f"  page={page}, page_size={page_size}, offset={offset}")
-       
        # Get transactions using new reporting service method
        transactions_df = reporting_service.get_transactions_report(
            categories=filter_categories,
@@ -140,8 +131,6 @@ async def get_transactions(
            )
            transactions.append(transaction)
 
-       print(f"Returning {len(transactions)} transactions (total: {total_count})")
-
        # Get aggregate data from the DataFrame (if available)
        total_sum = 0.0
        avg_amount = 0.0
@@ -164,15 +153,9 @@ async def get_transactions(
             "total_sum": float(total_sum),
             "avg_amount": float(avg_amount)
         }
-
-       print(f"Response keys: {list(response.keys())}")
-       print(f"Response total_sum type: {type(response['total_sum'])}")
-       print(f"Response total_sum value: {response['total_sum']}")
-
        return response
        
    except Exception as e:
-       print(f"Error in get_transactions: {str(e)}")
        raise APIError(status_code=500, detail=str(e))
 
 @router.post("/", response_model=TransactionResponse)
@@ -353,9 +336,6 @@ async def preview_upload(
     """
     Preview uploaded files with timestamp-based duplicate detection preview
     """
-    print("🔍🔍🔍 PREVIEW_UPLOAD CALLED!")
-    print(f"🔍🔍🔍 Number of files: {len(files)}")
-    
     try:
         session_id = str(uuid.uuid4())
         all_transactions = []
@@ -366,52 +346,38 @@ async def preview_upload(
         
         # Generate preview timestamp for duplicate checking
         preview_import_timestamp = datetime.now()
-        print(f"🔍🔍🔍 Generated timestamp: {preview_import_timestamp}")
         
         for file in files:
-            print(f"🔍🔍🔍 Processing file: {file.filename}")
             
             # Validate and ensure we have a proper filename
             original_filename = getattr(file, 'filename', None)
             if not original_filename or not isinstance(original_filename, str):
                 original_filename = f"uploaded_file_{int(time.time())}.csv"
             
-            print(f"🔍🔍🔍 Original filename: {original_filename}")
             
             # Ensure the filename has a .csv extension for proper processing
             if not original_filename.lower().endswith('.csv'):
                 original_filename += '.csv'
                 
-            print(f"🔍🔍🔍 Final filename: {original_filename}")
             
             # Create a temporary file with proper extension
             file_extension = os.path.splitext(original_filename)[1] or '.csv'
-            print(f"🔍🔍🔍 File extension: {file_extension}")
             
             with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
                 try:
-                    print(f"🔍🔍🔍 Reading file content...")
                     content = await file.read()
-                    print(f"🔍🔍🔍 File content size: {len(content)} bytes")
                     temp_file.write(content)
                     temp_file_path = temp_file.name
-                    print(f"🔍🔍🔍 Temp file created: {temp_file_path}")
                 except Exception as e:
-                    print(f"🔍🔍🔍 ERROR reading file: {e}")
                     continue
             
             try:
-                print(f"🔍🔍🔍 About to process bank file...")
                 # Process the file with the original filename for bank detection
                 df = import_service.process_bank_file(temp_file_path, original_filename=original_filename)
-                print(f"🔍🔍🔍 Processed bank file: {len(df) if df is not None else 'None'} transactions")
                 
                 if df is not None and not df.empty:
-                    print(f"🔍🔍🔍 DataFrame has {len(df)} rows")
-                    
                     # Create preview transactions with batch info for duplicate detection
                     preview_transactions = []
-                    print(f"🔍🔍🔍 Creating preview transactions...")
                     
                     for idx, row in df.iterrows():
                         try:
@@ -437,20 +403,14 @@ async def preview_upload(
                             tx_dict['is_duplicate'] = False  # Will be updated below
                             
                         except Exception as e:
-                            print(f"🔍🔍🔍 ERROR creating preview transaction {idx}: {e}")
                             continue
                     
-                    print(f"🔍🔍🔍 Created {len(preview_transactions)} preview transactions")
-                    
                     # Assign ranks for duplicate detection
-                    print(f"🔍🔍🔍 Assigning ranks...")
                     transaction_repo.assign_ranks_within_batch(
                         preview_transactions, session_id, preview_import_timestamp
                     )
-                    print(f"🔍🔍🔍 Ranks assigned")
                     
                     # Check for duplicates and create final transaction list
-                    print(f"🔍🔍🔍 Checking for duplicates...")
                     transactions = []
                     
                     for i, (row_dict, preview_tx) in enumerate(zip(df.to_dict('records'), preview_transactions)):
@@ -463,11 +423,9 @@ async def preview_upload(
                         
                         transactions.append(tx_dict)
                     
-                    print(f"🔍🔍🔍 Duplicate checking complete")
                     all_transactions.extend(transactions)
                     files_info[original_filename] = len(transactions)
                     
-                    print(f"🔍🔍🔍 Added {len(transactions)} transactions to session")
                     
                     # Filter for Misc transactions that are not duplicates
                     misc_count = 0
@@ -481,8 +439,6 @@ async def preview_upload(
                             
                         if tx.get('Category') == 'Misc' and not tx.get('is_duplicate', False):
                             try:
-                                print(f"🔍🔍🔍 Processing Misc transaction: {tx.get('Description', 'NO DESC')[:30]}")
-                                
                                 # Convert date string to date object
                                 if isinstance(tx['Date'], str):
                                     tx_date = pd.to_datetime(tx['Date']).date()
@@ -494,7 +450,6 @@ async def preview_upload(
                                 
                                 # Get category suggestions
                                 suggestions = _suggest_categories(str(tx['Description']), import_service)
-                                print(f"🔍🔍🔍 Suggestions for '{tx['Description'][:20]}': {suggestions}")
                                 
                                 # Create preview object
                                 preview = TransactionPreview(
@@ -507,18 +462,13 @@ async def preview_upload(
                                     suggested_categories=suggestions
                                 )
                                 all_misc_transactions.append(preview)
-                                print(f"🔍🔍🔍 Added Misc transaction to review list")
                                 
                             except Exception as e:
-                                print(f"🔍🔍🔍 ERROR creating preview for Misc transaction: {e}")
                                 import traceback
                                 traceback.print_exc()
                                 continue
-                    
-                    print(f"🔍🔍🔍 File {original_filename}: {misc_count} Misc total, {duplicate_count} duplicates, {len(all_misc_transactions)} for review")
                                 
             except Exception as e:
-                print(f"🔍🔍🔍 ERROR processing file {original_filename}: {e}")
                 import traceback
                 traceback.print_exc()
                 continue
@@ -526,14 +476,8 @@ async def preview_upload(
                 # Clean up the temporary file
                 try:
                     os.unlink(temp_file_path)
-                    print(f"🔍🔍🔍 Cleaned up temp file")
                 except Exception as e:
-                    print(f"🔍🔍🔍 ERROR cleaning up temp file: {e}")
-        
-        print(f"🔍🔍🔍 FINAL COUNTS:")
-        print(f"🔍🔍🔍   Total transactions: {len(all_transactions)}")
-        print(f"🔍🔍🔍   Misc for review: {len(all_misc_transactions)}")
-        print(f"🔍🔍🔍   Files processed: {len(files_info)}")
+                    print(f"ERROR cleaning up temp file: {e}")
         
         # Store session data
         upload_sessions[session_id] = {
@@ -545,8 +489,6 @@ async def preview_upload(
         # Clean up old sessions
         _cleanup_old_sessions()
         
-        print(f"🔍🔍🔍 Returning response...")
-        
         response_data = FilePreviewResponse(
             session_id=session_id,
             total_transactions=len(all_transactions),
@@ -555,12 +497,10 @@ async def preview_upload(
             files_processed=len(files_info)
         )
         
-        print(f"🔍🔍🔍 Response created: requires_review={response_data.requires_review}")
         
         return ApiResponse.success(data=response_data)
         
     except Exception as e:
-        print(f"🔍🔍🔍 MAJOR ERROR IN PREVIEW: {str(e)}")
         import traceback
         traceback.print_exc()
         
