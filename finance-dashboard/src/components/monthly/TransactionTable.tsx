@@ -59,8 +59,8 @@ export default function TransactionTable({ transactions, isLoading }: Transactio
       let bValue: any = b[sortField];
       
       if (sortField === 'amount') {
-        aValue = aValue;
-        bValue = bValue;
+        aValue = Number(aValue) || 0;  // Convert to signed number, fallback to 0
+        bValue = Number(bValue) || 0;  // Convert to signed number, fallback to 0
       }
       
       if (sortField === 'date') {
