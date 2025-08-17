@@ -78,47 +78,26 @@ export default function TransactionFilters({
   const [monthInput, setMonthInput] = useState(filters.month || '');
   const [monthError, setMonthError] = useState<string>('');
   
-  // LOCAL STATE FOR SEARCH INPUT - This is the key fix
+  // Simple local state - no debouncing
   const [searchInput, setSearchInput] = useState(filters.description);
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Sync local search input with external filter changes (but don't create infinite loops)
-  useEffect(() => {
-    // Only update if the external value is different from our local state
-    // This prevents the input from being reset while the user is typing
-    if (filters.description !== searchInput && document.activeElement?.tagName !== 'INPUT') {
-      setSearchInput(filters.description);
+  // Handle search submission
+  const handleSearch = () => {
+    onFiltersChange({ description: searchInput, page: 1 });
+  };
+
+  // Handle Enter key
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.description]); // Only depend on filters.description to prevent infinite loops
+  };
 
-  // IMPROVED DEBOUNCED SEARCH HANDLER - Completely isolated from parent re-renders
-  const handleSearchInputChange = useCallback((value: string) => {
-    // Update local state immediately for responsive typing
-    setSearchInput(value);
-    
-    // Clear existing timeout
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
-    
-    // Set new timeout to update filters after user stops typing
-    debounceTimeoutRef.current = setTimeout(() => {
-      // Only call parent if value actually changed
-      if (value !== filters.description) {
-        onFiltersChange({ description: value, page: 1 });
-      }
-    }, 300); // 300ms delay
-  }, [filters.description, onFiltersChange]);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-    };
-  }, []);
+  // Handle clear
+  const handleClearSearch = () => {
+    setSearchInput('');
+    onFiltersChange({ description: '', page: 1 });
+  };
 
   // Handle month input change
   const handleMonthChange = (value: string) => {
@@ -149,15 +128,6 @@ export default function TransactionFilters({
     onFiltersChange({ categories: newCategories, page: 1 });
   };
 
-  // Clear search with proper state management
-  const handleClearSearch = useCallback(() => {
-    setSearchInput('');
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
-    onFiltersChange({ description: '' });
-  }, [onFiltersChange]);
-
   // Sidebar variant - compact version
   if (variant === 'sidebar') {
     return (
@@ -171,21 +141,30 @@ export default function TransactionFilters({
             <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-500" />
             <input
               type="text"
-              value={searchInput} // Use local state
-              onChange={(e) => handleSearchInputChange(e.target.value)} // Use debounced handler
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Search descriptions..."
-              className="w-full pl-8 pr-3 py-2 text-sm bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-              autoComplete="off" // Prevent browser autocomplete from interfering
+              className="w-full pl-8 pr-16 py-2 text-sm bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+              autoComplete="off"
             />
-            {searchInput && ( // Check local state for button visibility
+            {searchInput && (
               <button
-                onClick={handleClearSearch} // Use proper clear handler
-                className="absolute right-2.5 top-2.5 text-gray-500 hover:text-gray-300"
-                type="button" // Prevent form submission
+                onClick={handleClearSearch}
+                className="absolute right-9 top-2.5 text-gray-500 hover:text-gray-300"
+                type="button"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
+            <button
+              onClick={handleSearch}
+              className="absolute right-2 top-2 p-1 bg-gray-600 hover:bg-gray-500 text-gray-300 hover:text-white rounded transition-colors"
+              type="button"
+              title="Search (Enter)"
+            >
+              <Search className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
@@ -255,7 +234,7 @@ export default function TransactionFilters({
     );
   }
 
-  // Default horizontal variant - remains mostly the same but with debounced search
+  // Default horizontal variant
   return (
     <div className="card-standard">
       <div className="flex items-center">
@@ -290,21 +269,30 @@ export default function TransactionFilters({
               <Search className="absolute left-3 top-3 w-4 h-4 text-gray-500" />
               <input
                 type="text"
-                value={searchInput} // Use local state
-                onChange={(e) => handleSearchInputChange(e.target.value)} // Use debounced handler
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="Search transaction descriptions..."
-                className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                autoComplete="off" // Prevent browser autocomplete from interfering
+                className="w-full pl-10 pr-24 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                autoComplete="off"
               />
-              {searchInput && ( // Check local state for button visibility
+              {searchInput && (
                 <button
-                  onClick={handleClearSearch} // Use proper clear handler
-                  className="absolute right-3 top-3 text-gray-500 hover:text-gray-300"
-                  type="button" // Prevent form submission
+                  onClick={handleClearSearch}
+                  className="absolute right-14 top-3 text-gray-500 hover:text-gray-300"
+                  type="button"
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
+              <button
+                onClick={handleSearch}
+                className="absolute right-3 top-2.5 p-1.5 bg-gray-600 hover:bg-gray-500 text-gray-300 hover:text-white rounded transition-colors"
+                type="button"
+                title="Search (Enter)"
+              >
+                <Search className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
