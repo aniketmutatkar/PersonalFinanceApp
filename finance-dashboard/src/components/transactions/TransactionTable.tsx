@@ -97,12 +97,12 @@ export default function TransactionTable({
 
   return (
     <div>
-      {/* Table with optimized column widths */}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[700px]">
+      {/* Table with fixed layout and proper constraints */}
+      <div className="w-full overflow-x-auto">
+        <table className="w-full table-fixed min-w-[700px]">
           <thead className="bg-gray-700">
             <tr>
-              {/* Date - More compact */}
+              {/* Date - Fixed width */}
               <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 w-20">
                 <button
                   onClick={() => handleSort('date', sortField, sortDirection, onSortChange)}
@@ -113,8 +113,8 @@ export default function TransactionTable({
                 </button>
               </th>
               
-              {/* Description - Flexible but constrained */}
-              <th className="px-2 py-2 text-left text-xs font-medium text-gray-300">
+              {/* Description - Fixed width with proper constraints */}
+              <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 w-80">
                 <button
                   onClick={() => handleSort('description', sortField, sortDirection, onSortChange)}
                   className="group flex items-center gap-1 hover:text-white transition-colors"
@@ -124,8 +124,8 @@ export default function TransactionTable({
                 </button>
               </th>
               
-              {/* Category - Compact */}
-              <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 w-24">
+              {/* Category - Fixed width */}
+              <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 w-28">
                 <button
                   onClick={() => handleSort('category', sortField, sortDirection, onSortChange)}
                   className="group flex items-center gap-1 hover:text-white transition-colors"
@@ -135,7 +135,7 @@ export default function TransactionTable({
                 </button>
               </th>
               
-              {/* Amount - Right aligned and compact */}
+              {/* Amount - Fixed width */}
               <th className="px-2 py-2 text-right text-xs font-medium text-gray-300 w-24">
                 <button
                   onClick={() => handleSort('amount', sortField, sortDirection, onSortChange)}
@@ -146,7 +146,7 @@ export default function TransactionTable({
                 </button>
               </th>
               
-              {/* Source - Compact */}
+              {/* Source - Fixed width */}
               <th className="px-2 py-2 text-left text-xs font-medium text-gray-300 w-20">
                 <button
                   onClick={() => handleSort('source', sortField, sortDirection, onSortChange)}
@@ -157,7 +157,7 @@ export default function TransactionTable({
                 </button>
               </th>
               
-              {/* Actions - Minimal width */}
+              {/* Actions - Fixed width */}
               {showEditButton && (
                 <th className="px-1 py-2 text-center text-xs font-medium text-gray-300 w-12">
                   Edit
@@ -169,13 +169,15 @@ export default function TransactionTable({
           <tbody className="divide-y divide-gray-700">
             {transactions.map((transaction) => (
               <tr key={transaction.id} className="hover:bg-gray-700/50">
-                {/* Date - Compact format */}
-                <td className="px-2 py-2 text-xs text-gray-300">
-                  {formatDate(transaction.date)}
+                {/* Date - Fixed width with overflow handling */}
+                <td className="px-2 py-2 text-xs text-gray-300 w-20">
+                  <div className="truncate">
+                    {formatDate(transaction.date)}
+                  </div>
                 </td>
                 
-                {/* Description - Truncated with tooltip */}
-                <td className="px-2 py-2 text-xs text-white">
+                {/* Description - Fixed width with proper truncation */}
+                <td className="px-2 py-2 text-xs text-white w-80">
                   <div 
                     className="truncate" 
                     title={transaction.description}
@@ -184,30 +186,34 @@ export default function TransactionTable({
                   </div>
                 </td>
                 
-                {/* Category - Smaller badge */}
-                <td className="px-2 py-2 text-xs">
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-600/20 text-blue-400 truncate max-w-full">
-                    {transaction.category}
-                  </span>
+                {/* Category - Fixed width with truncation */}
+                <td className="px-2 py-2 text-xs w-28">
+                  <div className="truncate">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-blue-600/20 text-blue-400">
+                      {transaction.category}
+                    </span>
+                  </div>
                 </td>
                 
-                {/* Amount - Right aligned, compact font */}
-                <td className="px-2 py-2 text-xs text-right font-mono">
-                  <span className={transaction.amount > 0 ? 'text-red-400' : 'text-green-400'}>
-                    {transaction.amount > 0 ? '+' : '-'}{formatCurrency(transaction.amount)}
-                  </span>
+                {/* Amount - Fixed width, right aligned */}
+                <td className="px-2 py-2 text-xs text-right font-mono w-24">
+                  <div className="truncate">
+                    <span className={transaction.amount > 0 ? 'text-red-400' : 'text-green-400'}>
+                      {transaction.amount > 0 ? '+' : '-'}{formatCurrency(transaction.amount)}
+                    </span>
+                  </div>
                 </td>
                 
-                {/* Source - Truncated */}
-                <td className="px-2 py-2 text-xs text-gray-400">
-                  <div className="max-w-full truncate capitalize" title={transaction.source}>
+                {/* Source - Fixed width with truncation */}
+                <td className="px-2 py-2 text-xs text-gray-400 w-20">
+                  <div className="truncate capitalize" title={transaction.source}>
                     {transaction.source}
                   </div>
                 </td>
                 
-                {/* Actions - Minimal padding */}
+                {/* Actions - Fixed width */}
                 {showEditButton && (
-                  <td className="px-1 py-2 text-center">
+                  <td className="px-1 py-2 text-center w-12">
                     <button
                       onClick={() => setEditingTransaction(transaction)}
                       className="text-gray-400 hover:text-blue-400 transition-colors p-0.5"
@@ -289,14 +295,15 @@ export default function TransactionTable({
         </div>
       </div>
 
-      {/* Edit Modal */}
+      {/* Transaction Edit Modal */}
       {editingTransaction && (
         <TransactionEditModal
           transaction={editingTransaction}
           isOpen={!!editingTransaction}
           onClose={() => setEditingTransaction(null)}
           onSuccess={() => {
-            console.log('Transaction updated successfully');
+            setEditingTransaction(null);
+            // You might want to refetch data here
           }}
         />
       )}
