@@ -111,10 +111,12 @@ export default function TransactionTable({ transactions, isLoading }: Transactio
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    // Parse date string as UTC to avoid timezone issues
+    const date = new Date(dateString + 'T12:00:00.000Z'); // Force UTC midday
     return date.toLocaleDateString('en-US', {
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'UTC' // Force UTC to prevent timezone shifts
     });
   };
 

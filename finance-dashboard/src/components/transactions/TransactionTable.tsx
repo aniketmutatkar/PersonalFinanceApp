@@ -28,24 +28,25 @@ function formatDate(dateString: string): string {
   if (!dateString) return '';
   
   try {
-    // Parse date components directly to avoid timezone issues
-    const [year, month, day] = dateString.split('-').map(Number);
-    
-    // Create date object with local timezone (month is 0-indexed)
-    const date = new Date(year, month - 1, day);
+    // Parse date string as UTC to avoid timezone issues
+    const date = new Date(dateString + 'T12:00:00.000Z'); // Force UTC midday
     
     // More compact format - just month/day for current year, month/day/year for others
     const currentYear = new Date().getFullYear();
+    const year = date.getUTCFullYear();
+    
     if (year === currentYear) {
       return date.toLocaleDateString('en-US', {
         month: 'short',
-        day: 'numeric'
+        day: 'numeric',
+        timeZone: 'UTC' // Force UTC to prevent timezone shifts
       });
     } else {
       return date.toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
-        year: '2-digit'
+        year: '2-digit',
+        timeZone: 'UTC' // Force UTC to prevent timezone shifts
       });
     }
   } catch (error) {
