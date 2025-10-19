@@ -37,6 +37,7 @@ ENV/
 update-network.sh
 NETWORK_SETUP.md
 start-finance
+CODE_REVIEW_2025.md
 
 # Configuration files (keep templates, ignore actual config)
 config.yaml
