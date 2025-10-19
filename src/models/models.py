@@ -139,24 +139,51 @@ class MonthlySummary:
     total: Decimal = Decimal('0')
     total_minus_invest: Decimal = Decimal('0')
     id: Optional[int] = None
-    
+
+    # New fields for detailed tracking
+    investment_deposits: Decimal = Decimal('0')  # Money going INTO investments
+    investment_withdrawals: Decimal = Decimal('0')  # Money coming OUT of investments
+    income: Decimal = Decimal('0')  # Pay category
+    net_income: Decimal = Decimal('0')  # Pay + investment withdrawals
+    net_overall: Decimal = Decimal('0')  # Net income - all spending
+    net_without_investments: Decimal = Decimal('0')  # Net income - non-investment spending
+
     def calculate_totals(self, categories: Dict[str, Category]):
         """Calculate summary totals based on categories"""
         # Get investment categories
         investment_categories = [name for name, cat in categories.items() if cat.is_investment]
-        
-        # Calculate investment total
-        self.investment_total = sum(
-            self.category_totals.get(cat, Decimal('0')) 
-            for cat in investment_categories
-        )
-        
+
+        # Separate investment deposits from withdrawals
+        self.investment_deposits = Decimal('0')
+        self.investment_withdrawals = Decimal('0')
+
+        for cat in investment_categories:
+            amount = self.category_totals.get(cat, Decimal('0'))
+            if amount > 0:
+                self.investment_deposits += amount
+            elif amount < 0:
+                # Store as positive value
+                self.investment_withdrawals += abs(amount)
+
+        # Calculate investment total (net of deposits and withdrawals)
+        self.investment_total = self.investment_deposits - self.investment_withdrawals
+
         # Calculate total (excluding Pay and Payment)
         self.total = sum(
             self.category_totals.get(cat, Decimal('0'))
             for cat in self.category_totals.keys()
             if cat not in ["Pay", "Payment"]
         )
-        
+
         # Calculate total minus investments
         self.total_minus_invest = self.total - self.investment_total
+
+        # Calculate income (Pay category)
+        self.income = self.category_totals.get("Pay", Decimal('0'))
+
+        # Calculate net income (income + withdrawals from investments)
+        self.net_income = self.income + self.investment_withdrawals
+
+        # Calculate net values
+        self.net_overall = self.net_income - self.total
+        self.net_without_investments = self.net_income - self.total_minus_invest

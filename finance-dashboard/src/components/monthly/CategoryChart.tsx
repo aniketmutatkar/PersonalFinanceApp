@@ -24,8 +24,14 @@ const COLORS = [
 
 export default function CategoryChart({ summary, transactions }: CategoryChartProps) {
   const { chartData, totalAmount } = useMemo(() => {
-    const excludeCategories = ['Pay', 'Payment', 'Acorns', 'Wealthfront', 'Robinhood', 'Schwab'];
-    
+    // Exclude: income categories, investment categories, and calculated fields
+    const excludeCategories = [
+      'Pay', 'Payment',  // Income
+      'Acorns', 'Wealthfront', 'Robinhood', 'Schwab',  // Investments
+      'investment_deposits', 'investment_withdrawals', 'income', 'net_income',  // Calculated fields
+      'net_overall', 'net_without_investments'  // Calculated fields
+    ];
+
     // Count transactions per category
     const transactionCounts: Record<string, number> = {};
     transactions.forEach(transaction => {
@@ -65,7 +71,13 @@ export default function CategoryChart({ summary, transactions }: CategoryChartPr
 
   // ✅ FIXED: Move categories processing outside JSX to avoid conditional hook
   const allCategoriesForLegend = useMemo(() => {
-    const excludeCategories = ['Pay', 'Payment', 'Acorns', 'Wealthfront', 'Robinhood', 'Schwab'];
+    // Exclude: income categories, investment categories, and calculated fields
+    const excludeCategories = [
+      'Pay', 'Payment',  // Income
+      'Acorns', 'Wealthfront', 'Robinhood', 'Schwab',  // Investments
+      'investment_deposits', 'investment_withdrawals', 'income', 'net_income',  // Calculated fields
+      'net_overall', 'net_without_investments'  // Calculated fields
+    ];
     return Object.entries(summary.category_totals)
       .filter(([category]) => !excludeCategories.includes(category))
       .map(([category, amount]) => {

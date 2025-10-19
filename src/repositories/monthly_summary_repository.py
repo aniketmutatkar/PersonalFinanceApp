@@ -41,7 +41,13 @@ class MonthlySummaryRepository:
                 'month_year': summary.month_year,
                 'investment_total': float(summary.investment_total),
                 'total': float(summary.total),
-                'total_minus_invest': float(summary.total_minus_invest)
+                'total_minus_invest': float(summary.total_minus_invest),
+                'investment_deposits': float(summary.investment_deposits),
+                'investment_withdrawals': float(summary.investment_withdrawals),
+                'income': float(summary.income),
+                'net_income': float(summary.net_income),
+                'net_overall': float(summary.net_overall),
+                'net_without_investments': float(summary.net_without_investments)
             }
             
             # Add category totals
@@ -251,22 +257,36 @@ class MonthlySummaryRepository:
             Mapped MonthlySummary domain entity
         """
         # Extract category totals (all columns except the standard ones)
-        standard_columns = {'id', 'month', 'year', 'month_year', 'investment_total', 'total', 'total_minus_invest'}
+        standard_columns = {
+            'id', 'month', 'year', 'month_year', 'investment_total', 'total', 'total_minus_invest',
+            'investment_deposits', 'investment_withdrawals', 'income', 'net_income',
+            'net_overall', 'net_without_investments'
+        }
         category_totals = {}
-        
+
         for key in row._mapping.keys():
             if key not in standard_columns and row._mapping[key] is not None:
                 category_totals[key] = Decimal(str(row._mapping[key]))
-        
+
+        # Helper function to safely convert to Decimal
+        def to_decimal(value):
+            return Decimal(str(value)) if value is not None else Decimal('0')
+
         return MonthlySummary(
             id=row.id,
             month=row.month,
             year=row.year,
             month_year=row.month_year,
             category_totals=category_totals,
-            investment_total=Decimal(str(row.investment_total)) if row.investment_total else Decimal('0'),
-            total=Decimal(str(row.total)) if row.total else Decimal('0'),
-            total_minus_invest=Decimal(str(row.total_minus_invest)) if row.total_minus_invest else Decimal('0')
+            investment_total=to_decimal(row.investment_total),
+            total=to_decimal(row.total),
+            total_minus_invest=to_decimal(row.total_minus_invest),
+            investment_deposits=to_decimal(row._mapping.get('investment_deposits')),
+            investment_withdrawals=to_decimal(row._mapping.get('investment_withdrawals')),
+            income=to_decimal(row._mapping.get('income')),
+            net_income=to_decimal(row._mapping.get('net_income')),
+            net_overall=to_decimal(row._mapping.get('net_overall')),
+            net_without_investments=to_decimal(row._mapping.get('net_without_investments'))
         )
     
     def update_from_transactions(self, affected_months: Dict[str, Set[str]], 

@@ -55,43 +55,64 @@ function getPreviousMonthName(currentMonthYear: string): string {
 }
 
 export default function MonthlyMetrics({ summary, previousSummary }: MonthlyMetricsProps) {
-  // Calculate key metrics
+  // Use new backend fields with fallbacks
   const totalSpending = summary.total_minus_invest;
   const totalInvestments = summary.investment_total;
-  const totalIncome = summary.category_totals.Pay || 0;
-  const netSavings = totalIncome - totalSpending - totalInvestments;
+  const investmentDeposits = summary.investment_deposits || totalInvestments;
+  const investmentWithdrawals = summary.investment_withdrawals || 0;
+  const totalIncome = summary.income || summary.category_totals.Pay || 0;
+  const netIncome = summary.net_income || totalIncome;
+
+  // NEW: Use both net calculations from backend
+  const netOverall = summary.net_overall || (netIncome - totalSpending - totalInvestments);
+  const netWithoutInvestments = summary.net_without_investments || (netIncome - totalSpending);
   const burnRate = totalSpending / 30; // Daily burn rate
 
   // Previous month metrics for comparison
   const prevSpending = previousSummary?.total_minus_invest || 0;
   const prevInvestments = previousSummary?.investment_total || 0;
-  const prevIncome = previousSummary?.category_totals?.Pay || 0;
-  const prevNetSavings = prevIncome - prevSpending - prevInvestments;
-  
+  const prevNetOverall = previousSummary?.net_overall || 0;
+  const prevNetWithoutInvestments = previousSummary?.net_without_investments || 0;
+
   // Calculate trends with better error handling
   const spendingTrend = calculateTrend(totalSpending, prevSpending, true); // Spending: down is good
   const investmentTrend = calculateTrend(totalInvestments, prevInvestments, false); // Investment: up is good
-  const netPositionTrend = calculateTrend(netSavings, prevNetSavings, false); // Net savings: up is good
-  
+  const netOverallTrend = calculateTrend(netOverall, prevNetOverall, false); // Net: up is good
+  const netWithoutInvestTrend = calculateTrend(netWithoutInvestments, prevNetWithoutInvestments, false); // Net: up is good
+
   const prevMonthName = previousSummary ? getPreviousMonthName(summary.month_year) : 'Previous';
 
-  // FIXED: Return individual cards, let parent handle grid layout
+  // UPDATED: Show both net values
   return (
     <>
-      {/* Hero Metric - Net Financial Position */}
+      {/* Hero Metric - Net Overall (true cash flow) */}
       <MetricCard
-        title="Net"
-        value={formatCurrency(netSavings)}
-        subtitle={netSavings > 1000 ? "Strong surplus this month" : netSavings > 0 ? "Positive cash flow" : "Deficit this month"}
+        title="Net Overall"
+        value={formatCurrency(netOverall)}
+        subtitle={investmentWithdrawals > 0 ? 'Income + withdrawals - spending' : 'Income - all spending'}
         variant="hero"
-        indicator={netSavings > 500 ? 'success' : netSavings > 0 ? 'info' : 'warning'}
-        trend={{
-          value: `${netPositionTrend.value} vs ${prevMonthName}`,
-          direction: netPositionTrend.direction,
-          isPositive: netPositionTrend.isPositive
-        }}
+        indicator={netOverall > 500 ? 'success' : netOverall > 0 ? 'info' : 'warning'}
+        trend={netOverallTrend.value !== 'No previous data' ? {
+          value: `${netOverallTrend.value} vs ${prevMonthName}`,
+          direction: netOverallTrend.direction,
+          isPositive: netOverallTrend.isPositive
+        } : undefined}
       />
-      
+
+      {/* NEW: Net w/o Investments */}
+      <MetricCard
+        title="Net w/o Investments"
+        value={formatCurrency(netWithoutInvestments)}
+        subtitle="Available before investing"
+        variant={netWithoutInvestments > 0 ? 'success' : 'warning'}
+        indicator={netWithoutInvestments > 500 ? 'success' : netWithoutInvestments > 0 ? 'info' : 'warning'}
+        trend={netWithoutInvestTrend.value !== 'No previous data' ? {
+          value: `${netWithoutInvestTrend.value} vs ${prevMonthName}`,
+          direction: netWithoutInvestTrend.direction,
+          isPositive: netWithoutInvestTrend.isPositive
+        } : undefined}
+      />
+
       {/* Supporting Metrics */}
       <MetricCard
         title="Total Spending"
@@ -105,31 +126,22 @@ export default function MonthlyMetrics({ summary, previousSummary }: MonthlyMetr
           isPositive: spendingTrend.isPositive
         }}
       />
-      
+
       <MetricCard
         title="Investments"
         value={formatCurrency(totalInvestments)}
-        subtitle={totalInvestments > 0 ? "Building wealth" : "No investments"}
+        subtitle={
+          investmentWithdrawals > 0
+            ? `Deposits: ${formatCurrency(investmentDeposits)} | Withdrawals: ${formatCurrency(investmentWithdrawals)}`
+            : investmentDeposits > 0 ? "Building wealth" : "No investments"
+        }
         variant="info"
         indicator={totalInvestments > 0 ? 'success' : 'warning'}
-        trend={{
-          value: investmentTrend.value !== 'No data' ? `${investmentTrend.value} vs ${prevMonthName}` : 'No previous data',
+        trend={investmentTrend.value !== 'No previous data' && investmentTrend.value !== 'No data' ? {
+          value: `${investmentTrend.value} vs ${prevMonthName}`,
           direction: investmentTrend.direction,
           isPositive: totalInvestments > prevInvestments
-        }}
-      />
-      
-      <MetricCard
-        title="Burn Rate"
-        value={formatCurrency(burnRate)}
-        subtitle="Daily avg spending"
-        variant={burnRate > 150 ? 'warning' : 'default'}
-        indicator={burnRate > 150 ? 'warning' : 'success'}
-        trend={{
-          value: burnRate > 150 ? 'High' : 'Moderate',
-          direction: burnRate > 150 ? 'up' : 'down',
-          isPositive: burnRate <= 150
-        }}
+        } : undefined}
       />
     </>
   );

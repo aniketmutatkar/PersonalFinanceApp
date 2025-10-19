@@ -99,6 +99,14 @@ export interface MonthlySummary {
   investment_total: number;
   total: number;
   total_minus_invest: number;
+
+  // New fields for detailed financial tracking
+  investment_deposits?: number;      // Money going into investments
+  investment_withdrawals?: number;   // Money coming out of investments
+  income?: number;                   // Income from Pay category
+  net_income?: number;               // Income + investment withdrawals
+  net_overall?: number;              // Net income - all spending (including investments)
+  net_without_investments?: number;  // Net income - non-investment spending
 }
 
 export interface MonthlySummaryListResponse {

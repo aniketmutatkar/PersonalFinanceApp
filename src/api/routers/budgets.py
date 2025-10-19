@@ -53,12 +53,19 @@ async def get_budget_analysis(
         total_budget = Decimal('0')
         total_actual = Decimal('0')
         
+        # Categories to exclude from budget tracking (investment accounts tracked separately)
+        exclude_from_budget = ['Acorns', 'Wealthfront', 'Robinhood', 'Schwab']
+
         # Process each category where we have budget data
         for category, budget_amount in budgets.items():
             # Skip categories with no budget
             if budget_amount <= 0:
                 continue
-                
+
+            # Skip individual investment account categories
+            if category in exclude_from_budget:
+                continue
+
             # Special handling for "Investments" budget category
             if category == "Investments":
                 # Sum all investment transaction categories
@@ -133,22 +140,29 @@ async def get_yearly_budget_analysis(
         budget_data = {}
         all_categories = set()
         months = []
-        
+
+        # Categories to exclude from budget tracking (investment accounts tracked separately)
+        exclude_from_budget = ['Acorns', 'Wealthfront', 'Robinhood', 'Schwab']
+
         # For each month, calculate budget analysis
         for summary in monthly_summaries:
             month = summary.month
             months.append(month)
-            
+
             budget_data[month] = {}
-            
+
             # Process each category where we have budget data
             for category, budget_amount in budgets.items():
                 # Skip categories with no budget
                 if budget_amount <= 0:
                     continue
-                
+
+                # Skip individual investment account categories
+                if category in exclude_from_budget:
+                    continue
+
                 all_categories.add(category)
-                
+
                 # Special handling for "Investments" budget category
                 if category == "Investments":
                     # Sum all investment transaction categories

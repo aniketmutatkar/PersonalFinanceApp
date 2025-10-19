@@ -36,29 +36,36 @@ function formatRunwayMonths(months: number): string {
 
 // No data processing needed - using real data from backend!
 
-// FIXED: Use the working pattern data processing
+// UPDATED: Use new backend fields for net calculations
 function processRealPatternData(monthlySummaries: any[]) {
   if (!monthlySummaries || monthlySummaries.length === 0) return [];
-  
+
   // Data is already in chronological order from API (asc sort)
   // Take the last 24 months for chart display
   const last24Months = monthlySummaries.slice(-24);
-  
+
   return last24Months.map((summary: any) => {
-    const income = Math.abs(parseFloat(summary.category_totals['Pay'] || '0'));
+    // Use new backend fields (fallback to old calculation for compatibility)
+    const income = Math.abs(parseFloat(summary.income || summary.category_totals?.['Pay'] || '0'));
     const spending = parseFloat(summary.total_minus_invest || '0');
     const investment = parseFloat(summary.investment_total || '0');
-    
-    // Available Cash = Income - Spending (what you have before investing)
-    const availableCash = income - spending;
-    
+    const investmentDeposits = parseFloat(summary.investment_deposits || '0');
+    const investmentWithdrawals = parseFloat(summary.investment_withdrawals || '0');
+    const netIncome = parseFloat(summary.net_income || income);
+    const netOverall = parseFloat(summary.net_overall || (income - spending - investment));
+    const netWithoutInvestments = parseFloat(summary.net_without_investments || (income - spending));
+
     return {
       name: summary.month.slice(0, 3), // "Jan", "Feb", etc.
       fullName: summary.month_year,
       spending: Math.round(spending),
       investment: Math.round(Math.abs(investment)),
+      investmentDeposits: Math.round(investmentDeposits),
+      investmentWithdrawals: Math.round(investmentWithdrawals),
       income: Math.round(income),
-      availableCash: Math.round(availableCash),
+      netIncome: Math.round(netIncome),
+      availableCash: Math.round(netWithoutInvestments), // Net without investments
+      netOverall: Math.round(netOverall), // Net including all transactions
       month: summary.month,
       year: summary.year
     };

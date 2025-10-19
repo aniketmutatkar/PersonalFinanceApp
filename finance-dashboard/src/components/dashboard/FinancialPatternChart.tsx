@@ -17,8 +17,12 @@ interface MonthlyData {
   fullName: string;
   spending: number;
   investment: number;
+  investmentDeposits?: number;
+  investmentWithdrawals?: number;
   income: number;
-  availableCash: number; // Income - Spending (better than surplus)
+  netIncome?: number; // Income + withdrawals
+  availableCash: number; // Net without investments (income + withdrawals - spending)
+  netOverall?: number; // Net including all transactions (income + withdrawals - all spending)
   month: string;
   year: number;
 }
@@ -73,18 +77,34 @@ function FinancialPatternChart({ monthlyData, currentAvailableCash }: FinancialP
             <p className="text-green-400 text-sm">
               💰 Income: {formatCurrency(data.income)}
             </p>
+            {data.investmentWithdrawals > 0 && (
+              <p className="text-green-300 text-xs ml-4">
+                + Withdrawals: {formatCurrency(data.investmentWithdrawals)}
+              </p>
+            )}
             <p className="text-red-400 text-sm">
               💸 Spending: {formatCurrency(data.spending)}
             </p>
             <p className="text-blue-400 text-sm">
-              📈 Investment: {formatCurrency(data.investment)}
+              📈 Investments: {formatCurrency(data.investment)}
             </p>
-            <div className="border-t border-gray-600 pt-1 mt-2">
-              <p className={`text-sm font-bold ${data.availableCash >= 0 ? 'text-yellow-300' : 'text-orange-300'}`}>
-                💵 Available Cash: {formatCurrency(data.availableCash)}
+            {data.investmentDeposits > 0 && (
+              <p className="text-blue-300 text-xs ml-4">
+                Deposits: {formatCurrency(data.investmentDeposits)}
               </p>
-              <p className="text-xs text-gray-400 mt-1">
-                (Income - Spending, before investments)
+            )}
+            <div className="border-t border-gray-600 pt-2 mt-2 space-y-1">
+              <p className={`text-sm font-bold ${data.netOverall >= 0 ? 'text-purple-300' : 'text-red-300'}`}>
+                🎯 Net Overall: {formatCurrency(data.netOverall)}
+              </p>
+              <p className="text-xs text-gray-400">
+                (Income + withdrawals - all spending)
+              </p>
+              <p className={`text-sm font-bold ${data.availableCash >= 0 ? 'text-yellow-300' : 'text-orange-300'}`}>
+                💵 Net w/o Investments: {formatCurrency(data.availableCash)}
+              </p>
+              <p className="text-xs text-gray-400">
+                (Income + withdrawals - spending only)
               </p>
             </div>
           </div>
