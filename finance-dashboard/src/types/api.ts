@@ -266,6 +266,8 @@ export interface SpendingPatternsResponse {
 export interface InvestmentAccount {
   name: string;
   total_deposits: number;
+  total_withdrawals: number;
+  net_invested: number;
   monthly_average: number;
   transaction_count: number;
   last_deposit_date?: string;
@@ -273,14 +275,16 @@ export interface InvestmentAccount {
 }
 
 export interface InvestmentOverviewData {
-  total_invested: number;
+  total_deposits: number;
+  total_withdrawals: number;
+  net_invested: number;
   monthly_average: number;
   active_accounts: number;
-  investment_rate: number; // % of income going to investments
+  investment_rate: number; // % of income going to investments (based on deposits)
   account_breakdown: InvestmentAccount[];
-  best_month: { 
-    month: string; 
-    amount: number; 
+  best_month: {
+    month: string;
+    amount: number;
   };
   consistency_score: number; // Overall investment consistency
   period_covered: {

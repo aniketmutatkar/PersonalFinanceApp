@@ -98,7 +98,7 @@ export default function InvestmentView() {
             
             <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
               <div className="text-2xl font-bold text-blue-400">
-                +${portfolioOverview.total_growth.toLocaleString()}
+                ${portfolioOverview.total_growth.toLocaleString()}
               </div>
               <div className="text-gray-400 text-sm">Total Growth</div>
             </div>
@@ -205,10 +205,10 @@ export default function InvestmentView() {
             Transaction-based data
           </span>
         </div>
-        <div className="grid-metrics-4">
-          <InvestmentOverview 
-            data={legacyOverviewData} 
-            isLoading={legacyOverviewLoading} 
+        <div className="grid-metrics-3">
+          <InvestmentOverview
+            data={legacyOverviewData}
+            isLoading={legacyOverviewLoading}
           />
         </div>
       </div>

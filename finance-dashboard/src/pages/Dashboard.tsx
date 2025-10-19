@@ -1,5 +1,5 @@
 import React from 'react';
-import { useFinancialOverview, usePortfolioTrends, useMonthlySummariesChronological, useMonthlySummariesRecent } from '../hooks/useApiData';
+import { useFinancialOverview, useHistoricalNetWorth, useMonthlySummariesChronological, useMonthlySummariesRecent } from '../hooks/useApiData';
 import { Calendar, TrendingUp, Target, PiggyBank } from 'lucide-react';
 import MetricCard from '../components/cards/MetricCard';
 import LoadingSkeleton from '../components/ui/LoadingSkeleton';
@@ -34,44 +34,7 @@ function formatRunwayMonths(months: number): string {
   return `${Math.round(months)} month${Math.round(months) !== 1 ? 's' : ''}`;
 }
 
-// FIXED: Use the working data processing logic from your original
-function processRealNetWorthData(portfolioTrends: any, overview: any) {
-  if (!portfolioTrends?.monthly_values) return [];  // ✅ FIXED: monthly_values, not trends
-  
-  // Get current liquid assets breakdown
-  const currentTotalLiquid = overview.financial_health.net_worth.liquid_assets;
-  
-  // Calculate current bank balances (liquid - Wealthfront Cash)
-  const estimatedBankBalances = currentTotalLiquid - (portfolioTrends.monthly_values[0]?.wealthfront_cash || 0);
-  
-  // Portfolio API returns newest first, reverse for chronological order
-  const chronologicalData = portfolioTrends.monthly_values.slice().reverse();
-  
-  return chronologicalData.map((month: any, index: number) => {
-    const portfolioValue = month.total_value;
-    const wealthfrontCash = month.wealthfront_cash || 0;
-    
-    // Estimate bank balances for historical months
-    const timeProgress = (index + 1) / chronologicalData.length;
-    const estimatedHistoricalBankBalance = estimatedBankBalances * (0.3 + (timeProgress * 0.7));
-    
-    // Total liquid = Wealthfront Cash + Bank Balances
-    const totalLiquid = wealthfrontCash + estimatedHistoricalBankBalance;
-    
-    // Investment assets = Portfolio value - Wealthfront Cash
-    const investmentAssets = portfolioValue - wealthfrontCash;
-    
-    // Total net worth = Portfolio + Bank Balances
-    const totalNetWorth = portfolioValue + estimatedHistoricalBankBalance;
-    
-    return {
-      month: month.month_display,  // ✅ FIXED: Use month_display from working code
-      net_worth: totalNetWorth,
-      liquid_assets: totalLiquid,
-      investment_assets: investmentAssets
-    };
-  });
-}
+// No data processing needed - using real data from backend!
 
 // FIXED: Use the working pattern data processing
 function processRealPatternData(monthlySummaries: any[]) {
@@ -104,7 +67,7 @@ function processRealPatternData(monthlySummaries: any[]) {
 
 export default function Dashboard() {
   const { data: overview, isLoading: overviewLoading, isError, error } = useFinancialOverview();
-  const { data: portfolioTrends, isLoading: portfolioLoading } = usePortfolioTrends("2y");
+  const { data: historicalNetWorth, isLoading: netWorthLoading } = useHistoricalNetWorth("2y");
   const { data: monthlySummariesChronological, isLoading: summariesChronologicalLoading } = useMonthlySummariesChronological();
   const { data: monthlySummariesRecent, isLoading: summariesRecentLoading } = useMonthlySummariesRecent();
 
@@ -121,7 +84,7 @@ export default function Dashboard() {
     );
   }
 
-  if (overviewLoading || portfolioLoading || summariesLoading || !overview) {
+  if (overviewLoading || netWorthLoading || summariesLoading || !overview) {
     return (
       <div className="page-content">
         {/* Page Header Skeleton - DESIGN SYSTEM */}
@@ -129,7 +92,7 @@ export default function Dashboard() {
           <div className="page-title bg-gray-700 rounded animate-pulse h-8 w-64"></div>
           <div className="h-4 w-96 bg-gray-700 rounded animate-pulse"></div>
         </div>
-        
+
         {/* Content Skeletons - DESIGN SYSTEM */}
         <div className="grid-metrics-3">
           <LoadingSkeleton variant="metric" />
@@ -144,9 +107,9 @@ export default function Dashboard() {
     );
   }
 
-  // FIXED: Process chart data using working logic
-  const netWorthData = portfolioTrends ? processRealNetWorthData(portfolioTrends, overview) : [];
-  const patternData = monthlySummariesChronological?.summaries ? 
+  // Use REAL historical data (no fabrication!)
+  const netWorthData = historicalNetWorth || [];
+  const patternData = monthlySummariesChronological?.summaries ?
     processRealPatternData(monthlySummariesChronological.summaries) : [];
 
   // Calculate growth metrics

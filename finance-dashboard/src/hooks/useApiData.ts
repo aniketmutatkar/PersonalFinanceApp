@@ -244,7 +244,7 @@ export const useBalanceHistory = (accountId?: number, startDate?: string, endDat
 // Mutation for adding manual balances
 export const useAddManualBalance = () => {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (balanceData: ManualBalanceCreate) => api.addManualBalance(balanceData),
     onSuccess: () => {
@@ -255,3 +255,11 @@ export const useAddManualBalance = () => {
     },
   });
 }
+
+// Historical Net Worth with REAL bank balances
+export const useHistoricalNetWorth = (period: string = "2y") =>
+  useQuery({
+    queryKey: ['historicalNetWorth', period],
+    queryFn: () => api.getHistoricalNetWorth(period),
+    staleTime: 15 * 60 * 1000, // 15 minutes
+  });

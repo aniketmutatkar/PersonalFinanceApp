@@ -62,27 +62,40 @@ export default function InvestmentOverview({ data, isLoading }: InvestmentOvervi
     );
   }
 
-  // CONVERTED: Return individual MetricCards (no internal grid)
+  // Display three separate metrics: deposits, withdrawals, and net invested
   return (
     <>
-      {/* Total Invested */}
+      {/* Total Deposits */}
       <MetricCard
-        title="Total Invested"
-        value={formatCurrency(data.total_invested)}
+        title="Total Deposits"
+        value={formatCurrency(data.total_deposits)}
         subtitle={`Across ${data.active_accounts} account${data.active_accounts !== 1 ? 's' : ''}`}
         variant="hero"
       />
 
-      {/* Monthly Average */}
+      {/* Total Withdrawals */}
       <MetricCard
-        title="Monthly Average"
-        value={formatCurrency(data.monthly_average)}
-        subtitle={`Over ${data.period_covered.total_months} months`}
+        title="Total Withdrawals"
+        value={formatCurrency(data.total_withdrawals)}
+        subtitle={`Money taken out`}
         variant="default"
         trend={{
-          direction: data.monthly_average > 500 ? 'up' : data.monthly_average > 200 ? 'neutral' : 'down',
-          value: data.best_month.month,
-          isPositive: data.monthly_average > 300
+          direction: data.total_withdrawals > 0 ? 'down' : 'neutral',
+          value: data.total_withdrawals > 0 ? 'Withdrawals made' : 'No withdrawals',
+          isPositive: data.total_withdrawals === 0
+        }}
+      />
+
+      {/* Net Invested */}
+      <MetricCard
+        title="Net Invested"
+        value={formatCurrency(data.net_invested)}
+        subtitle="Deposits minus withdrawals"
+        variant="accent"
+        trend={{
+          direction: data.net_invested > 0 ? 'up' : data.net_invested < 0 ? 'down' : 'neutral',
+          value: data.net_invested >= 0 ? 'Positive flow' : 'Negative flow',
+          isPositive: data.net_invested > 0
         }}
       />
 
@@ -91,8 +104,21 @@ export default function InvestmentOverview({ data, isLoading }: InvestmentOvervi
         title="Investment Rate"
         value={formatPercentage(data.investment_rate)}
         subtitle="% of income invested"
-        variant="accent"
+        variant="default"
         trend={getInvestmentRateTrend(data.investment_rate)}
+      />
+
+      {/* Monthly Average (based on deposits) */}
+      <MetricCard
+        title="Monthly Avg Deposits"
+        value={formatCurrency(data.monthly_average)}
+        subtitle={`Over ${data.period_covered.total_months} months`}
+        variant="default"
+        trend={{
+          direction: data.monthly_average > 500 ? 'up' : data.monthly_average > 200 ? 'neutral' : 'down',
+          value: data.best_month.month,
+          isPositive: data.monthly_average > 300
+        }}
       />
 
       {/* Consistency Score */}

@@ -305,64 +305,89 @@ export class FinanceTrackerApi {
 
   private processInvestmentOverview(transactions: Transaction[], monthlySummaries: MonthlySummary[]): InvestmentOverviewData {
     const investmentCategories = ['Acorns', 'Wealthfront', 'Robinhood', 'Schwab'];
-    
-    // Calculate total invested - FIX: Use absolute values since investments are negative
-    const totalInvested = transactions
-      .filter(tx => investmentCategories.includes(tx.category))
-      .reduce((sum, tx) => sum + Math.abs(this.safeNumber(tx.amount)), 0);
+
+    // Separate deposits (positive) and withdrawals (negative)
+    const investmentTransactions = transactions.filter(tx => investmentCategories.includes(tx.category));
+
+    const totalDeposits = investmentTransactions
+      .filter(tx => this.safeNumber(tx.amount) > 0)
+      .reduce((sum, tx) => sum + this.safeNumber(tx.amount), 0);
+
+    const totalWithdrawals = Math.abs(investmentTransactions
+      .filter(tx => this.safeNumber(tx.amount) < 0)
+      .reduce((sum, tx) => sum + this.safeNumber(tx.amount), 0));
+
+    const netInvested = totalDeposits - totalWithdrawals;
 
     // Calculate account breakdown
     const accountBreakdown: InvestmentAccount[] = investmentCategories.map(account => {
       const accountTransactions = transactions.filter(tx => tx.category === account);
-      
-      // FIX: Use absolute values for investment deposits
-      const totalDeposits = accountTransactions.reduce((sum, tx) => sum + Math.abs(this.safeNumber(tx.amount)), 0);
+
+      // Separate deposits and withdrawals per account
+      const accountDeposits = accountTransactions
+        .filter(tx => this.safeNumber(tx.amount) > 0)
+        .reduce((sum, tx) => sum + this.safeNumber(tx.amount), 0);
+
+      const accountWithdrawals = Math.abs(accountTransactions
+        .filter(tx => this.safeNumber(tx.amount) < 0)
+        .reduce((sum, tx) => sum + this.safeNumber(tx.amount), 0));
+
+      const accountNet = accountDeposits - accountWithdrawals;
       const transactionCount = accountTransactions.length;
       
       // Calculate monthly average (only for months with activity)
       const monthsWithActivity = new Set(accountTransactions.map(tx => tx.month_str)).size;
-      const monthlyAverage = monthsWithActivity > 0 ? totalDeposits / monthsWithActivity : 0;
-      
-      // Get last deposit date
-      const lastDepositDate = accountTransactions.length > 0 
-        ? accountTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
+      const monthlyAverage = monthsWithActivity > 0 ? accountDeposits / monthsWithActivity : 0;
+
+      // Get last deposit date (only from positive transactions)
+      const depositTransactions = accountTransactions.filter(tx => this.safeNumber(tx.amount) > 0);
+      const lastDepositDate = depositTransactions.length > 0
+        ? depositTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date
         : undefined;
 
       // Calculate consistency score (based on regular deposits)
-      const consistencyScore = this.calculateConsistencyScore(accountTransactions);
+      const consistencyScore = this.calculateConsistencyScore(depositTransactions);
 
       return {
         name: account,
-        total_deposits: totalDeposits,
+        total_deposits: accountDeposits,
+        total_withdrawals: accountWithdrawals,
+        net_invested: accountNet,
         monthly_average: monthlyAverage,
         transaction_count: transactionCount,
         last_deposit_date: lastDepositDate,
         consistency_score: consistencyScore
       };
-    }).filter(account => account.total_deposits > 0);
+    }).filter(account => account.total_deposits > 0 || account.total_withdrawals > 0);
 
-    // Calculate overall monthly average
+    // Calculate overall monthly average (based on deposits)
     const totalMonths = monthlySummaries.length || 1;
-    const monthlyAverage = totalInvested / totalMonths;
+    const monthlyAverage = totalDeposits / totalMonths;
 
-    // Find best month - FIX: Use absolute value for investment_total
-    const monthlyInvestments = monthlySummaries.map(summary => ({
-      month_year: summary.month_year,
-      amount: Math.abs(this.safeNumber(summary.investment_total))
-    }));
-    
-    const bestMonth = monthlyInvestments.length > 0 
-      ? monthlyInvestments.reduce((best, current) => 
-          current.amount > best.amount ? current : best, 
+    // Find best month (based on deposits only, ignoring withdrawals)
+    const monthlyInvestments = monthlySummaries.map(summary => {
+      const monthDeposits = this.safeNumber(summary.investment_total) > 0
+        ? this.safeNumber(summary.investment_total)
+        : 0;
+      return {
+        month_year: summary.month_year,
+        amount: monthDeposits
+      };
+    });
+
+    const bestMonth = monthlyInvestments.length > 0
+      ? monthlyInvestments.reduce((best, current) =>
+          current.amount > best.amount ? current : best,
           { month_year: 'None', amount: 0 }
         )
       : { month_year: 'None', amount: 0 };
 
-    // Calculate investment rate - FIX: Use absolute value for Pay (income)
-    const totalIncome = monthlySummaries.reduce((sum, summary) => 
-      sum + Math.abs(this.safeNumber(summary.category_totals['Pay'])), 0
-    );
-    const investmentRate = totalIncome > 0 ? (totalInvested / totalIncome) * 100 : 0;
+    // Calculate investment rate (deposits as % of income)
+    // Income is negative in database, so we use Math.abs to get positive value
+    const totalIncome = Math.abs(monthlySummaries.reduce((sum, summary) =>
+      sum + this.safeNumber(summary.category_totals['Pay']), 0
+    ));
+    const investmentRate = totalIncome > 0 ? (totalDeposits / totalIncome) * 100 : 0;
 
     // Calculate overall consistency score
     const overallConsistencyScore = accountBreakdown.length > 0
@@ -376,7 +401,9 @@ export class FinanceTrackerApi {
     );
 
     return {
-      total_invested: totalInvested,
+      total_deposits: totalDeposits,
+      total_withdrawals: totalWithdrawals,
+      net_invested: netInvested,
       monthly_average: monthlyAverage,
       active_accounts: accountBreakdown.length,
       investment_rate: investmentRate,
@@ -529,8 +556,21 @@ export class FinanceTrackerApi {
     if (accountId) params.append('account_id', accountId.toString());
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
-    
+
     return this.request(`/portfolio/balances?${params}`);
+  }
+
+  // Historical Net Worth
+  async getHistoricalNetWorth(period: string = "2y"): Promise<Array<{
+    month: string;
+    date: string;
+    net_worth: number;
+    liquid_assets: number;
+    investment_assets: number;
+    bank_balance: number;
+    wealthfront_cash: number;
+  }>> {
+    return this.request(`/financial-metrics/net-worth/history?period=${period}`);
   }
 
 }

@@ -1,8 +1,9 @@
 # src/services/financial_metrics_service.py
 
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from decimal import Decimal
-from datetime import date
+from datetime import date, datetime, timedelta
+from collections import defaultdict
 
 from src.repositories.bank_balance_repository import BankBalanceRepository
 from src.repositories.portfolio_repository import PortfolioRepository
@@ -122,3 +123,116 @@ class FinancialMetricsService:
             return "Low Liquidity"
         else:
             return "Very Low Liquidity"
+
+    def get_historical_net_worth(self, period: str = "2y") -> List[Dict]:
+        """
+        Get historical net worth data combining real bank balances and portfolio values.
+        Returns monthly data points with actual bank balance data (not fabricated).
+
+        Args:
+            period: Time period ("6m", "1y", "2y", "all")
+
+        Returns:
+            List of monthly data points with real values
+        """
+        end_date = date.today()
+
+        # Determine start date based on period
+        if period == "6m":
+            start_date = end_date - timedelta(days=180)
+        elif period == "1y":
+            start_date = end_date - timedelta(days=365)
+        elif period == "2y":
+            start_date = end_date - timedelta(days=730)
+        else:  # "all"
+            start_date = date(2020, 1, 1)
+
+        # Get all bank balances and organize by month
+        all_bank_balances = self.bank_repo.get_all_balances()
+        bank_by_month = {}
+        for balance in all_bank_balances:
+            if balance.statement_date >= start_date:
+                month_key = balance.statement_date.strftime('%Y-%m')
+                if month_key not in bank_by_month:
+                    bank_by_month[month_key] = {}
+                bank_by_month[month_key][balance.account_name] = balance.ending_balance
+
+        # Get all portfolio accounts
+        accounts = self.portfolio_repo.get_all_accounts()
+        wealthfront_cash_account = self.portfolio_repo.get_account_by_name("Wealthfront Cash")
+        wealthfront_cash_id = wealthfront_cash_account.id if wealthfront_cash_account else None
+
+        # Build monthly data points
+        monthly_data = []
+        current_date = start_date.replace(day=1)
+
+        while current_date <= end_date:
+            month_end = self._get_month_end_date(current_date)
+            month_key = current_date.strftime('%Y-%m')
+            month_display = current_date.strftime('%b %Y')
+
+            # Get bank balances for this month (or latest available)
+            bank_total = Decimal('0')
+            if month_key in bank_by_month:
+                # Use exact month data if available
+                for account_name, balance in bank_by_month[month_key].items():
+                    bank_total += balance
+            else:
+                # Find the latest bank balance before this month
+                latest_bank_total = Decimal('0')
+                for mk in sorted(bank_by_month.keys()):
+                    if mk <= month_key:
+                        latest_bank_total = sum(bank_by_month[mk].values(), Decimal('0'))
+                bank_total = latest_bank_total
+
+            # Get portfolio balances for this month
+            portfolio_total = Decimal('0')
+            wealthfront_cash = Decimal('0')
+            investment_assets = Decimal('0')
+
+            for account in accounts:
+                account_balances = self.portfolio_repo.get_balances_for_account(
+                    account.id,
+                    start_date=date(2020, 1, 1),
+                    end_date=month_end
+                )
+
+                if account_balances:
+                    latest_balance = max(account_balances, key=lambda b: b.balance_date)
+                    balance_value = latest_balance.balance_amount
+                    portfolio_total += balance_value
+
+                    if account.id == wealthfront_cash_id:
+                        wealthfront_cash = balance_value
+                    else:
+                        investment_assets += balance_value
+
+            # Calculate totals
+            liquid_assets = bank_total + wealthfront_cash
+            net_worth = bank_total + portfolio_total
+
+            monthly_data.append({
+                'month': month_display,
+                'date': current_date.strftime('%Y-%m-%d'),
+                'net_worth': float(net_worth),
+                'liquid_assets': float(liquid_assets),
+                'investment_assets': float(investment_assets),
+                'bank_balance': float(bank_total),
+                'wealthfront_cash': float(wealthfront_cash)
+            })
+
+            # Move to next month
+            if current_date.month == 12:
+                current_date = current_date.replace(year=current_date.year + 1, month=1)
+            else:
+                current_date = current_date.replace(month=current_date.month + 1)
+
+        return monthly_data
+
+    def _get_month_end_date(self, month_start: date) -> date:
+        """Get the last day of the month for a given month start date"""
+        if month_start.month == 12:
+            next_month = month_start.replace(year=month_start.year + 1, month=1)
+        else:
+            next_month = month_start.replace(month=month_start.month + 1)
+        return next_month - timedelta(days=1)
